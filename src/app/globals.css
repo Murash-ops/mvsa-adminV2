@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+@theme {
+  --color-forest: #2D5016;
+  --color-forest-dark: #1A3A0A;
+  --color-forest-light: #3D6B20;
+  
+  --color-gold: #C5A55A;
+  --color-gold-muted: #D4BA7A;
+  
+  --color-charcoal: #2B2B2B;
+  --color-charcoal-light: #4A4A4A;
+  --color-muted: #71717A;
+  --color-surface: #F9FAFB;
+  --color-card: #FFFFFF;
+  --color-border-color: rgba(45,80,22,0.12);
+  
+  --color-success: #22C55E;
+  --color-warning: #F59E0B;
+  --color-error: #DC3545;
+  --color-turf: #4CAF50;
+
+  --font-sans: var(--font-dm-sans), Arial, Helvetica, sans-serif;
+  --font-display: var(--font-cinzel), serif;
+  --font-mono: var(--font-jetbrains-mono), monospace;
+}
+
+@layer base {
+  body {
+    @apply bg-surface text-charcoal font-sans;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display text-forest tracking-tight;
+  }
+}
