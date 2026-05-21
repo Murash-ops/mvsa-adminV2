@@ -18,6 +18,7 @@ import {
   Globe,
   CheckCircle,
   Plus,
+  Sunrise,
 } from 'lucide-react';
 
 type Venue = {
@@ -25,6 +26,7 @@ type Venue = {
   name: string;
   type: 'turf' | 'meeting_room';
   hourly_rates: {
+    morning?: number;
     off_peak?: number;
     peak?: number;
     weekend?: number;
@@ -57,7 +59,7 @@ export default function SettingsPage() {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [editRates, setEditRates] = useState({ off_peak: 0, peak: 0, weekend: 0 });
+  const [editRates, setEditRates] = useState({ morning: 0, off_peak: 0, peak: 0, weekend: 0 });
   const [editName, setEditName] = useState('');
 
   const fetchVenues = async () => {
@@ -76,6 +78,7 @@ export default function SettingsPage() {
     setEditVenue(venue);
     setEditName(venue.name);
     setEditRates({
+      morning: venue.hourly_rates?.morning ?? 0,
       off_peak: venue.hourly_rates?.off_peak ?? 0,
       peak: venue.hourly_rates?.peak ?? 0,
       weekend: venue.hourly_rates?.weekend ?? 0,
@@ -92,6 +95,7 @@ export default function SettingsPage() {
       .update({
         name: editName,
         hourly_rates: {
+          morning: Number(editRates.morning),
           off_peak: Number(editRates.off_peak),
           peak: Number(editRates.peak),
           weekend: Number(editRates.weekend),
@@ -177,19 +181,20 @@ export default function SettingsPage() {
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-4 gap-2">
                     {[
+                      { label: 'Morning', value: venue.hourly_rates?.morning, icon: Sunrise },
                       { label: 'Off-Peak', value: venue.hourly_rates?.off_peak, icon: Clock },
                       { label: 'Peak', value: venue.hourly_rates?.peak, icon: DollarSign },
                       { label: 'Weekend', value: venue.hourly_rates?.weekend, icon: DollarSign },
                     ].map(({ label, value, icon: Icon }) => (
-                      <div key={label} className="bg-forest/3 border border-forest/8 rounded-2xl p-3 text-center">
+                      <div key={label} className="bg-forest/3 border border-forest/8 rounded-2xl p-2.5 text-center">
                         <div className="flex items-center justify-center gap-1 mb-1">
                           <Icon className="w-3 h-3 text-forest/40" />
-                          <span className="text-[9px] font-black uppercase tracking-wider text-forest/40">{label}</span>
+                          <span className="text-[8px] font-black uppercase tracking-wider text-forest/40">{label}</span>
                         </div>
-                        <p className="font-display font-black text-forest text-sm tracking-tight">
-                          {value ? `KES ${Number(value).toLocaleString()}` : <span className="text-forest/30 italic text-xs">Not set</span>}
+                        <p className="font-display font-black text-forest text-xs tracking-tight">
+                          {value ? `KES ${Number(value).toLocaleString()}` : <span className="text-forest/30 italic text-[10px]">Not set</span>}
                         </p>
                       </div>
                     ))}
@@ -333,9 +338,10 @@ export default function SettingsPage() {
                 <p className="text-xs font-black uppercase tracking-widest text-muted mb-4">Hourly Rates (KES)</p>
                 <div className="space-y-3">
                   {[
-                    { key: 'off_peak' as const, label: 'Off-Peak Rate', hint: 'Morning & afternoon hours' },
-                    { key: 'peak' as const, label: 'Peak Rate', hint: 'Evening & high-demand hours' },
-                    { key: 'weekend' as const, label: 'Weekend Rate', hint: 'Saturday & Sunday' },
+                    { key: 'morning' as const, label: 'Morning Rate', hint: 'Weekday 8:00 AM – 12:00 PM' },
+                    { key: 'off_peak' as const, label: 'Off-Peak Rate', hint: 'Weekday 12:00 PM – 6:00 PM' },
+                    { key: 'peak' as const, label: 'Peak Rate', hint: 'Weekday evenings & weekend all-day' },
+                    { key: 'weekend' as const, label: 'Weekend Rate (Legacy)', hint: 'Saturday & Sunday' },
                   ].map(({ key, label, hint }) => (
                     <div key={key} className="flex items-center gap-4 p-4 bg-surface rounded-2xl border border-border-color">
                       <div className="flex-1">
@@ -347,7 +353,7 @@ export default function SettingsPage() {
                         <input
                           type="number"
                           value={editRates[key]}
-                          onChange={(e) => setEditRates({ ...editRates, [key]: e.target.value })}
+                          onChange={(e) => setEditRates({ ...editRates, [key]: Number(e.target.value) })}
                           className="w-24 px-3 py-2 text-right rounded-xl border border-border-color bg-white focus:outline-none focus:ring-2 focus:ring-gold/50 font-display font-bold text-forest text-lg"
                         />
                       </div>
