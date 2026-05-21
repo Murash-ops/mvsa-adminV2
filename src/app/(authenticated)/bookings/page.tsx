@@ -40,7 +40,7 @@ export default function BookingsPage() {
     }
   };
 
-  const confirmBooking = async (bookingId: number, depositAmount: number) => {
+  const confirmBooking = async (bookingId: number, depositAmount: number, mpesaCode?: string) => {
     if (!window.confirm('Are you sure you want to confirm this payment?')) return;
     
     setIsLoading(true);
@@ -61,7 +61,7 @@ export default function BookingsPage() {
           amount: depositAmount,
           method: 'mpesa_manual',
           status: 'completed',
-          mpesa_receipt: 'MANUAL-' + Math.floor(Math.random() * 1000000)
+          mpesa_receipt: mpesaCode || ('MANUAL-' + Math.floor(Math.random() * 1000000))
         }]);
         
       if (paymentError) throw paymentError;
@@ -153,6 +153,11 @@ export default function BookingsPage() {
                     <td className="px-8 py-6">
                       <p className="font-bold text-forest text-lg tracking-tight group-hover/row:text-gold transition-colors">{booking.client_name}</p>
                       <p className="text-xs text-charcoal-light font-mono opacity-60 tracking-wider">{booking.client_phone}</p>
+                      {booking.checkout_request_id && (
+                        <p className="text-[10px] mt-1 bg-gold/10 text-gold px-2 py-0.5 rounded font-mono inline-block uppercase font-bold">
+                          Code: {booking.checkout_request_id}
+                        </p>
+                      )}
                     </td>
                     <td className="px-8 py-6">
                       <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-forest/5 rounded-xl border border-forest/10">
@@ -193,7 +198,7 @@ export default function BookingsPage() {
                       <div className="flex justify-end items-center gap-3">
                         {booking.status === 'pending' && (
                           <button 
-                            onClick={() => confirmBooking(booking.id, booking.deposit_amount)}
+                            onClick={() => confirmBooking(booking.id, booking.deposit_amount, booking.checkout_request_id)}
                             className="px-4 py-2 bg-green-600 text-white hover:bg-green-700 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-green-600/20 transition-all hover:-translate-y-0.5 active:scale-95"
                           >
                             Verify Payment
