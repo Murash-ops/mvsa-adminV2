@@ -44,6 +44,8 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
   const [selectedSlots, setSelectedSlots] = useState<number[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'mpesa' | 'card'>('cash');
   const [amountPaid, setAmountPaid] = useState<string>('');
+  const [isBackdated, setIsBackdated] = useState(false);
+  const [backdateDate, setBackdateDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   
   // Data State
   const [venues, setVenues] = useState<Venue[]>([]);
@@ -119,35 +121,51 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
     setError(null);
 
     try {
+      const createdAtTimestamp = isBackdated
+        ? `${backdateDate}T12:00:00.000Z`
+        : new Date().toISOString();
+
       // 1. Create Booking
+      const bookingPayload: any = {
+        venue_id: selectedVenue.id,
+        client_phone: clientPhone,
+        client_name: clientName,
+        slot_ids: selectedSlots,
+        total_amount: totalAmount,
+        deposit_amount: parseFloat(amountPaid),
+        balance: totalAmount - parseFloat(amountPaid),
+        status: 'confirmed',
+        source: 'walk_in'
+      };
+
+      if (isBackdated) {
+        bookingPayload.created_at = createdAtTimestamp;
+      }
+
       const { data: booking, error: bookingError } = await supabase
         .from('bookings')
-        .insert({
-          venue_id: selectedVenue.id,
-          client_phone: clientPhone,
-          client_name: clientName,
-          slot_ids: selectedSlots,
-          total_amount: totalAmount,
-          deposit_amount: parseFloat(amountPaid),
-          balance: totalAmount - parseFloat(amountPaid),
-          status: 'confirmed',
-          source: 'walk_in'
-        })
+        .insert(bookingPayload)
         .select()
         .single();
 
       if (bookingError) throw bookingError;
 
       // 2. Create Payment
+      const paymentPayload: any = {
+        booking_id: booking.id,
+        amount: parseFloat(amountPaid),
+        payment_method: paymentMethod,
+        status: 'completed',
+        paid_at: createdAtTimestamp
+      };
+
+      if (isBackdated) {
+        paymentPayload.created_at = createdAtTimestamp;
+      }
+
       const { error: paymentError } = await supabase
         .from('payments')
-        .insert({
-          booking_id: booking.id,
-          amount: parseFloat(amountPaid),
-          payment_method: paymentMethod,
-          status: 'completed',
-          paid_at: new Date().toISOString()
-        });
+        .insert(paymentPayload);
 
       if (paymentError) throw paymentError;
 
@@ -162,13 +180,13 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
       // 4. Fire-and-forget booking confirmation SMS (non-blocking)
       supabase.functions.invoke('send-booking-sms', {
         body: { bookingId: booking.id }
-      }).then(({ data, error }) => {
+      }).then(({ data, error }: any) => {
         if (error) {
           console.error('Failed to send SMS confirmation:', error);
         } else {
           console.log('SMS confirmation processed:', data);
         }
-      }).catch(err => {
+      }).catch((err: any) => {
         console.error('Failed to trigger SMS confirmation:', err);
       });
 
@@ -181,6 +199,8 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
         setClientPhone('');
         setSelectedSlots([]);
         setAmountPaid('');
+        setIsBackdated(false);
+        setBackdateDate(format(new Date(), 'yyyy-MM-dd'));
       }, 2000);
 
     } catch (err: any) {
@@ -301,6 +321,37 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
                           className="w-full pl-11 pr-4 py-3.5 bg-surface border border-border-color rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-gold/20 focus:border-gold transition-all"
                         />
                       </div>
+                    </div>
+
+                    <div className="pt-2 flex flex-col gap-3">
+                      <label className="flex items-center gap-3 cursor-pointer group">
+                        <input 
+                          type="checkbox"
+                          checked={isBackdated}
+                          onChange={(e) => setIsBackdated(e.target.checked)}
+                          className="w-4 h-4 rounded border border-border-color text-gold focus:ring-gold/20 focus:ring-offset-0 focus:ring-2 accent-gold cursor-pointer"
+                        />
+                        <span className="text-xs font-bold text-charcoal-light group-hover:text-forest transition-colors">
+                          Backdate Transaction Date
+                        </span>
+                      </label>
+
+                      {isBackdated && (
+                        <div className="space-y-1.5 animate-in slide-in-from-top-2 duration-200">
+                          <label className="block text-xs font-bold text-charcoal-light ml-1">Transaction Date</label>
+                          <div className="relative">
+                            <CalendarIcon className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-muted" />
+                            <input 
+                              type="date"
+                              required
+                              value={backdateDate}
+                              max={format(new Date(), 'yyyy-MM-dd')}
+                              onChange={(e) => setBackdateDate(e.target.value)}
+                              className="w-full pl-11 pr-4 py-3.5 bg-surface border border-border-color rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-gold/20 focus:border-gold transition-all"
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

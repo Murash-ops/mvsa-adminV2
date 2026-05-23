@@ -53,6 +53,9 @@ test.describe('MVSA Admin Site Mobile Responsiveness & Touch Usability', () => {
 
       // Automatically handle authentication for dashboard pages
       test.beforeEach(async ({ page }, testInfo) => {
+        page.on('console', msg => console.log(`[BROWSER CONSOLE] ${msg.type()}: ${msg.text()}`));
+        page.on('pageerror', err => console.error(`[BROWSER UNHANDLED ERROR] ${err.message}`));
+
         const isAuthTest = !testInfo.title.includes('Page: Login');
         if (isAuthTest) {
           // Navigate to login page
@@ -64,19 +67,26 @@ test.describe('MVSA Admin Site Mobile Responsiveness & Touch Usability', () => {
           await page.getByRole('button', { name: /SIGN IN/i }).click();
 
           // Wait for the authenticated header layout to mount
-          await expect(page.locator('header')).toBeVisible({ timeout: 20000 });
+          await expect(page.locator('header').first()).toBeVisible({ timeout: 20000 });
         }
       });
 
       for (const pageInfo of testPages) {
         test(`Page: ${pageInfo.name} (${pageInfo.path})`, async ({ page }) => {
-          // Go to target page if it is not the login page (which we are already on or authenticated from)
+          const currentUrl = page.url();
+          const targetUrlPath = pageInfo.path;
+          
+          // Go to target page if we're not already on it
           if (pageInfo.authenticated) {
-            await page.goto(pageInfo.path, { waitUntil: 'domcontentloaded' });
+            const hasUrlMatch = currentUrl.endsWith(targetUrlPath) || 
+                               (targetUrlPath === '/' && (currentUrl.endsWith(':3001') || currentUrl.endsWith(':3001/')));
+            if (!hasUrlMatch) {
+              await page.goto(targetUrlPath, { waitUntil: 'domcontentloaded' });
+            }
           } else {
-            await page.goto(pageInfo.path, { waitUntil: 'domcontentloaded' });
+            await page.goto(targetUrlPath, { waitUntil: 'domcontentloaded' });
           }
-
+ 
           // Add brief wait for layouts to settle
           await page.waitForTimeout(500);
 
