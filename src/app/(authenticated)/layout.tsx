@@ -14,10 +14,10 @@ export default function AuthenticatedLayout({
 
   return (
     <AuthGuard>
-      <div className="flex min-h-screen bg-surface">
+      <div className="flex min-h-screen bg-transparent">
         <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
         
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 lg:pl-72">
           <Header onMenuClick={() => setIsSidebarOpen(true)} />
           <main className="flex-1 flex flex-col">
             {children}

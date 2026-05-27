@@ -1,36 +1,193 @@
 @import "tailwindcss";
 
 @theme {
-  --color-forest: #2D5016;
-  --color-forest-dark: #1A3A0A;
-  --color-forest-light: #3D6B20;
+  /* === CORE REDESIGN PALETTE === */
+  --color-forest: #0d2818;
+  --color-forest-dark: #061a10;
+  --color-forest-light: #1b4332;
   
-  --color-gold: #C5A55A;
-  --color-gold-muted: #D4BA7A;
+  --color-gold: hsl(38, 42%, 63%); /* #c5a880 */
+  --color-gold-muted: hsl(38, 48%, 54%); /* #b59363 */
+  --color-gold-deep: #8f744e;
   
-  --color-charcoal: #2B2B2B;
-  --color-charcoal-light: #4A4A4A;
-  --color-muted: #71717A;
-  --color-surface: #F9FAFB;
-  --color-card: #FFFFFF;
-  --color-border-color: rgba(45,80,22,0.12);
+  --color-charcoal: #061a10;
+  --color-charcoal-light: #bfcfc6;
+  --color-muted: #718a7a;
   
+  --color-surface: #061a10;
+  --color-card: rgba(13, 30, 14, 0.96); /* Highly opaque card base to preserve pristine administrative data readability */
+  --color-border-color: rgba(255, 255, 255, 0.08);
+  
+  /* === PITCH (DARK THEME) PALETTE === */
+  --color-pitch: #061a10;
+  --color-pitch-light: #0a2416;
+  --color-pitch-mid: #103320;
+  --color-pitch-surface: rgba(13, 30, 14, 0.96);
+  --color-pitch-border: rgba(255, 255, 255, 0.08);
+  --color-glow: rgba(197, 168, 128, 0.15);
+  
+  /* === STATUS === */
   --color-success: #22C55E;
   --color-warning: #F59E0B;
   --color-error: #DC3545;
-  --color-turf: #4CAF50;
+  --color-turf: #2d6a4f;
 
+  /* === TYPOGRAPHY === */
   --font-sans: var(--font-dm-sans), Arial, Helvetica, sans-serif;
-  --font-display: var(--font-cinzel), serif;
+  --font-display: var(--font-outfit), sans-serif;
+  --font-brand: var(--font-cinzel), serif;
   --font-mono: var(--font-jetbrains-mono), monospace;
 }
 
 @layer base {
   body {
-    @apply bg-surface text-charcoal font-sans;
+    background-image: 
+      linear-gradient(
+        rgba(6, 26, 16, 0.85),
+        rgba(6, 26, 16, 0.96)
+      ),
+      url('/images/hero_turf.jpeg');
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+    @apply text-charcoal-light font-sans min-h-screen antialiased bg-surface;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    @apply font-display text-forest tracking-tight;
+    @apply font-display text-white tracking-tighter;
+    font-weight: 700;
+  }
+  
+  h1 {
+    letter-spacing: -0.03em;
   }
 }
+
+/* ========================================
+   GLASSMORPHISM & PREMIUM GLOWS
+   ======================================== */
+
+.glass {
+  background: rgba(13, 30, 14, 0.96);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-gold {
+  background: rgba(197, 168, 128, 0.05);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(197, 168, 128, 0.15);
+}
+
+.glass-light {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.shadow-gold-sm {
+  box-shadow: 0 2px 8px rgba(197, 168, 128, 0.12);
+}
+
+.shadow-gold-md {
+  box-shadow: 0 4px 16px rgba(197, 168, 128, 0.15),
+              0 1px 4px rgba(197, 168, 128, 0.1);
+}
+
+.shadow-gold-lg {
+  box-shadow: 0 0 20px rgba(197, 168, 128, 0.15);
+}
+
+.shadow-pitch {
+  box-shadow: 0 8px 32px rgba(6, 26, 16, 0.6),
+              0 2px 8px rgba(6, 26, 16, 0.4);
+}
+
+/* ========================================
+   ANIMATIONS & HOVERS
+   ======================================== */
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes pulse-gold {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(197, 168, 128, 0.3); }
+  50% { box-shadow: 0 0 0 6px rgba(197, 168, 128, 0); }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes count-glow {
+  0%, 100% { text-shadow: 0 0 8px rgba(220, 53, 69, 0); }
+  50% { text-shadow: 0 0 16px rgba(220, 53, 69, 0.5); }
+}
+
+@keyframes entrance-scale {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-shimmer { animation: shimmer 2s infinite; }
+.animate-float { animation: float 3s ease-in-out infinite; }
+.animate-pulse-gold { animation: pulse-gold 2s ease-in-out infinite; }
+.animate-slide-up { animation: slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-count-glow { animation: count-glow 1.5s ease-in-out infinite; }
+.animate-entrance { animation: entrance-scale 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* Micro-transitions */
+.btn-premium {
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-premium:active {
+  transform: scale(0.98);
+}
+
+/* Stagger delays for list items */
+.stagger-1 { animation-delay: 30ms; }
+.stagger-2 { animation-delay: 60ms; }
+.stagger-3 { animation-delay: 90ms; }
+.stagger-4 { animation-delay: 120ms; }
+.stagger-5 { animation-delay: 150ms; }
+.stagger-6 { animation-delay: 180ms; }
+.stagger-7 { animation-delay: 210ms; }
+.stagger-8 { animation-delay: 240ms; }
+
+/* Scrollbar Hide */
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+.spring-bounce {
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Custom Select & Option Contrast Restorations */
+select, select option {
+  color: #F9FAFB !important;
+  background-color: #0d2818 !important;
+}
+
+/* Ensure high contrast for placeholders in dark inputs */
+input::placeholder, textarea::placeholder {
+  color: rgba(255, 255, 255, 0.4) !important;
+  opacity: 1;
+}
+
+input::-webkit-input-placeholder, textarea::-webkit-input-placeholder {
+  color: rgba(255, 255, 255, 0.4) !important;
+}
+

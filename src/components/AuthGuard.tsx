@@ -11,10 +11,36 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   useEffect(() => {
-    if (!isLoading && !user && pathname !== '/login') {
-      router.push('/login');
+    if (isLoading) return;
+
+    if (!user) {
+      if (pathname !== '/login') {
+        router.push('/login');
+      }
+      return;
     }
-  }, [user, isLoading, pathname, router]);
+
+    if (staff && pathname !== '/login') {
+      const routePermissions: Record<string, string[]> = {
+        '/academy-operations': ['super_admin', 'admin'],
+        '/bookings': ['super_admin', 'admin'],
+        '/walkins': ['super_admin', 'admin'],
+        '/expenses': ['super_admin', 'admin'],
+        '/programs': ['super_admin', 'admin'],
+        '/instructor': ['super_admin', 'coach'],
+        '/notifications': ['super_admin', 'admin'],
+        '/staff': ['super_admin'],
+        '/staff-management': ['super_admin'],
+        '/settings': ['super_admin']
+      };
+
+      const baseRoute = '/' + pathname.split('/')[1];
+      if (routePermissions[baseRoute] && !routePermissions[baseRoute].includes(staff.role)) {
+        console.warn(`AuthGuard: Access denied to ${pathname} for role ${staff.role}. Redirecting to /`);
+        router.push('/');
+      }
+    }
+  }, [user, staff, isLoading, pathname, router]);
 
   if (isLoading) {
     return (

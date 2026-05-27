@@ -121,9 +121,18 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
     setError(null);
 
     try {
+      // Ensure the Supabase client session is hydrated on the client before writing,
+      // so triggers like enforce_booking_rules successfully identify the admin user
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Your session is unauthenticated or expired. Please re-login.');
+      }
+
       const createdAtTimestamp = isBackdated
         ? `${backdateDate}T12:00:00.000Z`
         : new Date().toISOString();
+
+      const parsedAmountPaid = parseFloat(amountPaid) || 0;
 
       // 1. Create Booking
       const bookingPayload: any = {
@@ -132,8 +141,8 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
         client_name: clientName,
         slot_ids: selectedSlots,
         total_amount: totalAmount,
-        deposit_amount: parseFloat(amountPaid),
-        balance: totalAmount - parseFloat(amountPaid),
+        deposit_amount: parsedAmountPaid,
+        balance: totalAmount - parsedAmountPaid,
         status: 'confirmed',
         source: 'walk_in'
       };
@@ -150,24 +159,27 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
 
       if (bookingError) throw bookingError;
 
-      // 2. Create Payment
-      const paymentPayload: any = {
-        booking_id: booking.id,
-        amount: parseFloat(amountPaid),
-        payment_method: paymentMethod,
-        status: 'completed',
-        paid_at: createdAtTimestamp
-      };
+      // 2. Create Payment (only if payment is strictly > 0 to comply with check constraints)
+      if (parsedAmountPaid > 0) {
+        const paymentPayload: any = {
+          booking_id: booking.id,
+          amount: parsedAmountPaid,
+          payment_method: paymentMethod,
+          stream: 'venues',
+          status: 'completed',
+          paid_at: createdAtTimestamp
+        };
 
-      if (isBackdated) {
-        paymentPayload.created_at = createdAtTimestamp;
+        if (isBackdated) {
+          paymentPayload.created_at = createdAtTimestamp;
+        }
+
+        const { error: paymentError } = await supabase
+          .from('payments')
+          .insert(paymentPayload);
+
+        if (paymentError) throw paymentError;
       }
-
-      const { error: paymentError } = await supabase
-        .from('payments')
-        .insert(paymentPayload);
-
-      if (paymentError) throw paymentError;
 
       // 3. Update Slots
       const { error: slotsError } = await supabase
@@ -216,24 +228,24 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       {/* Backdrop */}
       <div 
-        className="absolute inset-0 bg-charcoal/60 backdrop-blur-sm animate-in fade-in duration-300"
+        className="absolute inset-0 bg-charcoal/80 backdrop-blur-sm animate-in fade-in duration-300"
         onClick={onClose}
       />
       
       {/* Modal Content */}
-      <div className="relative bg-white w-full max-w-4xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
+      <div className="relative bg-charcoal border border-white/10 w-full max-w-4xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
         
         {/* Header */}
-        <div className="p-6 border-b border-border-color flex justify-between items-center bg-surface/50">
+        <div className="p-6 border-b border-white/10 flex justify-between items-center bg-surface/50">
           <div>
-            <h2 className="text-2xl font-bold font-display tracking-tight flex items-center gap-2 text-forest">
+            <h2 className="text-2xl font-bold font-display tracking-tight flex items-center gap-2 text-white">
               <CheckCircle2 className="w-6 h-6 text-gold" /> Quick Log Walk-in
             </h2>
             <p className="text-charcoal-light text-sm">Manually record a booking and payment.</p>
           </div>
           <button 
             onClick={onClose}
-            className="p-2 hover:bg-forest/5 rounded-full transition-colors text-charcoal-light hover:text-forest"
+            className="p-2 hover:bg-white/10 rounded-full transition-colors text-charcoal-light hover:text-white"
           >
             <X className="w-6 h-6" />
           </button>
@@ -246,7 +258,7 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
               <div className="w-24 h-24 bg-success/10 text-success rounded-full flex items-center justify-center mb-6">
                 <CheckCircle2 className="w-12 h-12" />
               </div>
-              <h3 className="text-3xl font-bold font-display mb-2">Booking Logged!</h3>
+              <h3 className="text-3xl font-bold font-display mb-2 text-white">Booking Logged!</h3>
               <p className="text-charcoal-light max-w-md">The booking and payment have been recorded successfully. Redirecting...</p>
             </div>
           ) : (
@@ -269,7 +281,7 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
                           value={clientName}
                           onChange={(e) => setClientName(e.target.value)}
                           placeholder="e.g. John Doe"
-                          className="w-full pl-11 pr-4 py-3.5 bg-surface border border-border-color rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-gold/20 focus:border-gold transition-all"
+                          className="w-full pl-11 pr-4 py-3.5 bg-surface border border-white/10 rounded-2xl text-sm text-white placeholder-white/35 focus:outline-none focus:ring-2 focus:ring-gold/20 focus:border-gold transition-all"
                         />
                       </div>
                     </div>
@@ -283,7 +295,7 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
                           value={clientPhone}
                           onChange={(e) => setClientPhone(e.target.value)}
                           placeholder="07XX XXX XXX"
-                          className="w-full pl-11 pr-4 py-3.5 bg-surface border border-border-color rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-gold/20 focus:border-gold transition-all font-mono"
+                          className="w-full pl-11 pr-4 py-3.5 bg-surface border border-white/10 rounded-2xl text-sm text-white placeholder-white/35 focus:outline-none focus:ring-2 focus:ring-gold/20 focus:border-gold transition-all font-mono"
                         />
                       </div>
                     </div>
@@ -302,7 +314,7 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
                         <select 
                           value={selectedVenue?.id}
                           onChange={(e) => setSelectedVenue(venues.find(v => v.id === Number(e.target.value)) || null)}
-                          className="w-full pl-11 pr-4 py-3.5 bg-surface border border-border-color rounded-2xl text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-gold/20 focus:border-gold transition-all"
+                          className="w-full pl-11 pr-4 py-3.5 bg-surface border border-white/10 rounded-2xl text-sm text-white appearance-none focus:outline-none focus:ring-2 focus:ring-gold/20 focus:border-gold transition-all"
                         >
                           {venues.map(v => (
                             <option key={v.id} value={v.id}>{v.name}</option>
@@ -318,7 +330,7 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
                           type="date"
                           value={format(selectedDate, 'yyyy-MM-dd')}
                           onChange={(e) => setSelectedDate(new Date(e.target.value))}
-                          className="w-full pl-11 pr-4 py-3.5 bg-surface border border-border-color rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-gold/20 focus:border-gold transition-all"
+                          className="w-full pl-11 pr-4 py-3.5 bg-surface border border-white/10 rounded-2xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-gold/20 focus:border-gold transition-all"
                         />
                       </div>
                     </div>
@@ -329,9 +341,9 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
                           type="checkbox"
                           checked={isBackdated}
                           onChange={(e) => setIsBackdated(e.target.checked)}
-                          className="w-4 h-4 rounded border border-border-color text-gold focus:ring-gold/20 focus:ring-offset-0 focus:ring-2 accent-gold cursor-pointer"
+                          className="w-4 h-4 rounded border border-white/10 text-gold focus:ring-gold/20 focus:ring-offset-0 focus:ring-2 accent-gold cursor-pointer"
                         />
-                        <span className="text-xs font-bold text-charcoal-light group-hover:text-forest transition-colors">
+                        <span className="text-xs font-bold text-charcoal-light group-hover:text-white transition-colors">
                           Backdate Transaction Date
                         </span>
                       </label>
@@ -347,7 +359,7 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
                               value={backdateDate}
                               max={format(new Date(), 'yyyy-MM-dd')}
                               onChange={(e) => setBackdateDate(e.target.value)}
-                              className="w-full pl-11 pr-4 py-3.5 bg-surface border border-border-color rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-gold/20 focus:border-gold transition-all"
+                              className="w-full pl-11 pr-4 py-3.5 bg-surface border border-white/10 rounded-2xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-gold/20 focus:border-gold transition-all"
                             />
                           </div>
                         </div>
@@ -365,11 +377,11 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
                 {isLoading ? (
                   <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3 animate-pulse">
                     {[1, 2, 3, 4, 5, 6].map(i => (
-                      <div key={i} className="h-14 bg-surface rounded-xl"></div>
+                      <div key={i} className="h-14 bg-surface/50 border border-white/5 rounded-xl"></div>
                     ))}
                   </div>
                 ) : slots.length === 0 ? (
-                  <div className="p-8 text-center bg-surface border border-dashed border-border-color rounded-3xl">
+                  <div className="p-8 text-center bg-surface/30 border border-dashed border-white/10 rounded-3xl">
                     <AlertCircle className="w-8 h-8 text-muted mx-auto mb-2 opacity-50" />
                     <p className="text-sm text-muted">No slots available for this date/venue.</p>
                   </div>
@@ -387,10 +399,10 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
                           className={`
                             relative py-3 rounded-xl border-2 text-center transition-all duration-200
                             ${isBooked 
-                              ? 'bg-muted/10 border-border-color text-muted opacity-50 cursor-not-allowed' 
+                              ? 'bg-white/5 border-white/5 text-white/30 opacity-50 cursor-not-allowed' 
                               : isSelected
                                 ? 'bg-forest text-white border-forest shadow-lg shadow-forest/20'
-                                : 'bg-surface border-border-color hover:border-gold/50'
+                                : 'bg-surface border-white/10 text-white/80 hover:border-gold/50'
                             }
                           `}
                         >
@@ -408,7 +420,7 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
               </div>
 
               {/* Payment Section */}
-              <div className="bg-surface/50 border border-border-color rounded-3xl p-8 space-y-6">
+              <div className="bg-surface/50 border border-white/10 rounded-3xl p-8 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className="space-y-4">
                     <h3 className="text-xs uppercase font-bold text-muted tracking-widest flex items-center gap-2">
@@ -427,8 +439,8 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
                           className={`
                             flex-1 flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all
                             ${paymentMethod === method.id 
-                              ? 'bg-white border-gold text-forest shadow-sm' 
-                              : 'bg-transparent border-border-color text-muted hover:border-border-color/50'
+                              ? 'bg-gold/15 border-gold text-white shadow-sm' 
+                              : 'bg-transparent border-white/10 text-white/60 hover:border-white/20'
                             }
                           `}
                         >
@@ -446,23 +458,23 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
                     <div className="space-y-3">
                       <div className="flex justify-between items-center text-sm">
                         <span className="text-charcoal-light">Total Fee</span>
-                        <span className="font-mono font-bold">KES {totalAmount.toLocaleString()}</span>
+                        <span className="font-mono font-bold text-white">KES {totalAmount.toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between items-center gap-4">
-                        <span className="text-xs font-bold text-charcoal">Amount Paid</span>
+                        <span className="text-xs font-bold text-charcoal-light">Amount Paid</span>
                         <div className="relative flex-1 max-w-[150px]">
                           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-muted uppercase">KES</span>
                           <input 
                             type="number"
                             value={amountPaid}
                             onChange={(e) => setAmountPaid(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 bg-white border border-border-color rounded-xl text-sm font-mono font-bold focus:outline-none focus:ring-2 focus:ring-gold/20"
+                            className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 text-white placeholder-white/35 rounded-xl text-sm font-mono font-bold focus:outline-none focus:ring-2 focus:ring-gold/20"
                           />
                         </div>
                       </div>
-                      <div className="pt-3 border-t border-border-color flex justify-between items-center">
-                        <span className="text-sm font-bold text-forest">Balance Due</span>
-                        <span className="font-mono font-bold text-lg text-forest">
+                      <div className="pt-3 border-t border-white/10 flex justify-between items-center">
+                        <span className="text-sm font-bold text-white">Balance Due</span>
+                        <span className="font-mono font-bold text-lg text-gold">
                           KES {(totalAmount - (parseFloat(amountPaid) || 0)).toLocaleString()}
                         </span>
                       </div>
@@ -472,7 +484,7 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
               </div>
 
               {error && (
-                <div className="p-4 bg-error/10 border border-error/20 rounded-2xl flex items-center gap-3 text-error text-sm">
+                <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center gap-3 text-red-400 text-sm">
                   <AlertCircle className="w-5 h-5 shrink-0" />
                   <p>{error}</p>
                 </div>
@@ -485,8 +497,8 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
                 className={`
                   w-full py-5 rounded-2xl font-bold tracking-widest uppercase transition-all shadow-xl
                   ${isSubmitting || selectedSlots.length === 0
-                    ? 'bg-muted/20 text-muted cursor-not-allowed shadow-none'
-                    : 'bg-forest hover:bg-forest-dark text-white hover:shadow-forest/30 active:scale-[0.98]'
+                    ? 'bg-white/5 text-white/30 border border-white/5 cursor-not-allowed shadow-none'
+                    : 'bg-gold hover:bg-gold-muted text-forest-dark hover:shadow-gold/20 active:scale-[0.98]'
                   }
                 `}
               >

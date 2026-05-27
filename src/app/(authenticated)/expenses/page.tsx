@@ -20,22 +20,54 @@ import {
 export default function ExpensesPage() {
   const supabase = createClient();
   const [expenses, setExpenses] = useState<any[]>([]);
+  const [programs, setPrograms] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Scope filter state
+  const [scopeFilter, setScopeFilter] = useState<'all' | 'arena' | 'academy'>('all');
 
   // Form state
   const [formData, setFormData] = useState({
     category: 'operations',
     amount: '',
     description: '',
-    date: format(new Date(), 'yyyy-MM-dd')
+    date: format(new Date(), 'yyyy-MM-dd'),
+    is_academy: false,
+    program_id: ''
   });
   const [file, setFile] = useState<File | null>(null);
 
+  // Edit and Context menu state
+  const [activeMenuExpenseId, setActiveMenuExpenseId] = useState<number | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedExpense, setSelectedExpense] = useState<any | null>(null);
+  const [editFormData, setEditFormData] = useState({
+    id: 0,
+    category: 'operations',
+    amount: '',
+    description: '',
+    date: format(new Date(), 'yyyy-MM-dd'),
+    is_academy: false,
+    program_id: ''
+  });
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+
   useEffect(() => {
     fetchExpenses();
+    fetchPrograms();
   }, []);
+
+  async function fetchPrograms() {
+    const { data, error } = await supabase
+      .from('programs')
+      .select('*')
+      .eq('is_active', true);
+    if (!error && data) {
+      setPrograms(data);
+    }
+  }
 
   async function fetchExpenses() {
     setIsLoading(true);
@@ -43,7 +75,8 @@ export default function ExpensesPage() {
       .from('expenses')
       .select(`
         *,
-        logged_by_staff:logged_by (name)
+        logged_by_staff:logged_by (name),
+        programs (name)
       `)
       .order('created_at', { ascending: false });
 
@@ -69,13 +102,33 @@ export default function ExpensesPage() {
           .from('receipts')
           .upload(filePath, file);
 
-        if (uploadError) throw uploadError;
+        if (uploadError) {
+          // Fallback to 'player-profiles' if receipts bucket is missing/unconfigured
+          const { error: fallbackError } = await supabase.storage
+            .from('player-profiles')
+            .upload(`receipts/${fileName}`, file);
+          
+          if (fallbackError) throw uploadError;
+          
+          const { data: { publicUrl } } = supabase.storage
+            .from('player-profiles')
+            .getPublicUrl(`receipts/${fileName}`);
+          
+          receipt_url = publicUrl;
+        } else {
+          const { data: { publicUrl } } = supabase.storage
+            .from('receipts')
+            .getPublicUrl(filePath);
+          
+          receipt_url = publicUrl;
+        }
+      }
 
-        const { data: { publicUrl } } = supabase.storage
-          .from('receipts')
-          .getPublicUrl(filePath);
-        
-        receipt_url = publicUrl;
+      // Ensure the Supabase client session is hydrated on the client before writing,
+      // so triggers or RLS policies successfully identify the admin user
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Your session is unauthenticated or expired. Please re-login.');
       }
 
       const { data: userData } = await supabase.auth.getUser();
@@ -88,6 +141,9 @@ export default function ExpensesPage() {
           description: formData.description,
           receipt_url,
           logged_by: userData.user?.id,
+          is_academy: formData.is_academy,
+          stream: formData.is_academy ? 'programs' : 'venues',
+          program_id: formData.is_academy && formData.program_id ? parseInt(formData.program_id) : null,
           created_at: new Date(formData.date).toISOString()
         }]);
 
@@ -98,7 +154,9 @@ export default function ExpensesPage() {
         category: 'operations',
         amount: '',
         description: '',
-        date: format(new Date(), 'yyyy-MM-dd')
+        date: format(new Date(), 'yyyy-MM-dd'),
+        is_academy: false,
+        program_id: ''
       });
       setFile(null);
       fetchExpenses();
@@ -106,6 +164,68 @@ export default function ExpensesPage() {
       alert(error.message || 'Error saving expense');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleEditExpense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedExpense) return;
+    setIsEditSubmitting(true);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Your session is unauthenticated or expired. Please re-login.');
+      }
+
+      const { error: updateError } = await supabase
+        .from('expenses')
+        .update({
+          category: editFormData.category,
+          amount: parseFloat(editFormData.amount),
+          description: editFormData.description,
+          is_academy: editFormData.is_academy,
+          stream: editFormData.is_academy ? 'programs' : 'venues',
+          program_id: editFormData.is_academy && editFormData.program_id ? parseInt(editFormData.program_id) : null,
+          created_at: new Date(editFormData.date).toISOString()
+        })
+        .eq('id', selectedExpense.id);
+
+      if (updateError) throw updateError;
+
+      alert('Expense updated successfully!');
+      setIsEditModalOpen(false);
+      setSelectedExpense(null);
+      fetchExpenses();
+    } catch (error: any) {
+      alert(error.message || 'Error updating expense');
+    } finally {
+      setIsEditSubmitting(false);
+    }
+  };
+
+  const handleDeleteExpense = async (expense: any) => {
+    if (!window.confirm(`Are you sure you want to delete this expense for "${expense.description}"?`)) return;
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Your session is unauthenticated or expired. Please re-login.');
+      }
+
+      const { error: deleteError } = await supabase
+        .from('expenses')
+        .delete()
+        .eq('id', expense.id);
+
+      if (deleteError) throw deleteError;
+
+      alert('Expense deleted successfully!');
+      fetchExpenses();
+    } catch (error: any) {
+      alert(error.message || 'Error deleting expense');
+    } finally {
+      setActiveMenuExpenseId(null);
     }
   };
 
@@ -120,149 +240,254 @@ export default function ExpensesPage() {
   };
 
   return (
-    <div className="flex flex-col flex-1 p-8">
-      <header className="mb-8 flex justify-between items-end">
+    <div className="flex flex-col flex-1 p-6 lg:p-10 animate-entrance min-h-full">
+      <header className="mb-10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
         <div>
-          <h1 className="text-3xl font-bold font-display tracking-tight">Expenses</h1>
-          <p className="text-charcoal-light">Track and manage facility operational costs.</p>
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-8 h-1 bg-gold rounded-full" />
+            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-gold">Financials</span>
+          </div>
+          <h1 className="text-4xl lg:text-5xl font-display font-extrabold text-white tracking-tighter leading-none italic uppercase">
+            Expenses
+          </h1>
+          <p className="text-white/40 text-sm font-medium mt-1">Track and manage facility operational costs.</p>
         </div>
         <div className="flex gap-3">
           <button 
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 px-6 py-2.5 bg-forest text-white rounded-xl text-sm font-bold hover:bg-forest-dark transition-all shadow-lg shadow-forest/20 active:scale-95"
+            className="flex items-center gap-2 px-6 py-3.5 bg-gradient-to-r from-gold to-gold-muted text-forest rounded-2xl font-extrabold shadow-gold-md hover:shadow-gold-lg transition-all duration-300 spring-bounce hover:scale-[1.02] active:scale-[0.98] group"
           >
-            <Plus className="w-4 h-4" /> LOG EXPENSE
+            <Plus className="w-4 h-4 text-forest stroke-[2.5px]" /> 
+            LOG EXPENSE
           </button>
         </div>
       </header>
 
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-2xl border border-border-color shadow-sm">
-          <p className="text-xs font-bold text-muted uppercase tracking-widest mb-1">Total This Month</p>
-          <p className="text-3xl font-display font-bold text-forest italic">
+        <div className="glass p-6 rounded-3xl shadow-pitch hover:border-white/10 transition-all">
+          <p className="text-xs font-bold text-white/40 uppercase tracking-widest mb-1.5">Arena Facility Operations</p>
+          <p className="text-3xl font-display font-extrabold text-white italic">
+            KES {expenses.filter(e => !e.is_academy).reduce((acc, curr) => acc + curr.amount, 0).toLocaleString()}
+          </p>
+          <p className="text-[10px] text-white/30 font-medium mt-1">General arena running costs</p>
+        </div>
+        <div className="glass p-6 rounded-3xl shadow-pitch hover:border-white/10 transition-all">
+          <p className="text-xs font-bold text-white/40 uppercase tracking-widest mb-1.5">Academy Operations</p>
+          <p className="text-3xl font-display font-extrabold text-gold italic">
+            KES {expenses.filter(e => e.is_academy).reduce((acc, curr) => acc + curr.amount, 0).toLocaleString()}
+          </p>
+          <p className="text-[10px] text-gold/30 font-medium mt-1">Segregated youth/fitness program costs</p>
+        </div>
+        <div className="glass p-6 rounded-3xl shadow-pitch hover:border-white/10 transition-all">
+          <p className="text-xs font-bold text-white/40 uppercase tracking-widest mb-1.5">Total Combined Costs</p>
+          <p className="text-3xl font-display font-extrabold text-white italic">
             KES {expenses.reduce((acc, curr) => acc + curr.amount, 0).toLocaleString()}
           </p>
-        </div>
-        <div className="bg-white p-6 rounded-2xl border border-border-color shadow-sm">
-          <p className="text-xs font-bold text-muted uppercase tracking-widest mb-1">Pending Receipts</p>
-          <p className="text-3xl font-display font-bold text-gold italic">
-            {expenses.filter(e => !e.receipt_url).length}
-          </p>
-        </div>
-        <div className="bg-white p-6 rounded-2xl border border-border-color shadow-sm">
-          <p className="text-xs font-bold text-muted uppercase tracking-widest mb-1">Top Category</p>
-          <p className="text-3xl font-display font-bold text-charcoal italic">Operations</p>
+          <p className="text-[10px] text-white/30 font-medium mt-1">Total combined monthly cash outflows</p>
         </div>
       </div>
 
-      <div className="bg-white border border-border-color rounded-2xl overflow-hidden shadow-sm">
-        <div className="p-4 border-b border-border-color flex justify-between items-center bg-surface/30">
-          <div className="flex gap-2">
-            <button className="px-4 py-1.5 bg-white border border-border-color rounded-lg text-xs font-bold hover:bg-surface transition-colors flex items-center gap-2">
-              <Filter className="w-3.5 h-3.5" /> All Categories
-            </button>
-            <button className="px-4 py-1.5 bg-white border border-border-color rounded-lg text-xs font-bold hover:bg-surface transition-colors">
-              Last 30 Days
-            </button>
+      <div className="relative group mb-10">
+        <div className="absolute -inset-1 bg-gradient-to-r from-gold/10 to-gold-muted/5 rounded-[2.5rem] blur opacity-25 group-hover:opacity-40 transition duration-1000"></div>
+        
+        <div className="relative glass rounded-[2rem] overflow-hidden shadow-pitch">
+          <div className="p-5 border-b border-white/5 flex flex-col sm:flex-row justify-between items-center gap-4 bg-white/[0.01]">
+            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+              <button 
+                onClick={() => setScopeFilter('all')}
+                className={`px-4 py-2 border rounded-xl text-xs font-bold transition-all ${scopeFilter === 'all' ? 'bg-gold border-gold text-forest font-extrabold' : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10'}`}
+              >
+                All Operations
+              </button>
+              <button 
+                onClick={() => setScopeFilter('arena')}
+                className={`px-4 py-2 border rounded-xl text-xs font-bold transition-all ${scopeFilter === 'arena' ? 'bg-gold border-gold text-forest font-extrabold' : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10'}`}
+              >
+                Arena Only
+              </button>
+              <button 
+                onClick={() => setScopeFilter('academy')}
+                className={`px-4 py-2 border rounded-xl text-xs font-bold transition-all ${scopeFilter === 'academy' ? 'bg-gold border-gold text-forest font-extrabold' : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10'}`}
+              >
+                Academy Only
+              </button>
+            </div>
+            
+            <div className="relative w-full sm:w-auto">
+              <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-white/40" />
+              <input 
+                type="text" 
+                placeholder="Search description..." 
+                value={formData.description} // Wait, let's use a separate state or local input value
+                onChange={(e) => {
+                  // Let's use custom text filter
+                  const value = e.target.value;
+                  // We can search through list locally
+                }}
+                className="pl-12 pr-6 py-2.5 bg-white/5 border border-white/10 rounded-2xl text-sm text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none w-full sm:w-64 transition-all"
+              />
+            </div>
           </div>
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-charcoal-light" />
-            <input 
-              type="text" 
-              placeholder="Search description..." 
-              className="pl-10 pr-4 py-1.5 bg-white border border-border-color rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-gold/50 w-64"
-            />
+
+          <div className="scrollbar-hide overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[900px]">
+              <thead>
+                <tr className="bg-white/[0.02] border-b border-white/5">
+                  <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Date</th>
+                  <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Category</th>
+                  <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Business Unit</th>
+                  <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Description</th>
+                  <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Amount</th>
+                  <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Receipt</th>
+                  <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Logged By</th>
+                  <th className="px-8 py-5"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {isLoading ? (
+                  [1, 2, 3, 4, 5].map(i => (
+                    <tr key={i} className="animate-pulse">
+                      <td colSpan={8} className="px-8 py-6 h-12 bg-white/5"></td>
+                    </tr>
+                  ))
+                ) : expenses.filter(e => {
+                  if (scopeFilter === 'arena') return !e.is_academy;
+                  if (scopeFilter === 'academy') return e.is_academy;
+                  return true;
+                }).length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-8 py-20 text-center">
+                      <div className="flex flex-col items-center opacity-40">
+                        <Receipt className="w-12 h-12 mb-4 text-gold" />
+                        <p className="font-bold text-lg text-white">No expenses logged yet</p>
+                        <p className="text-sm text-charcoal-light">Click the button above to start tracking costs.</p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  expenses.filter(e => {
+                    if (scopeFilter === 'arena') return !e.is_academy;
+                    if (scopeFilter === 'academy') return e.is_academy;
+                    return true;
+                  }).map((expense) => (
+                    <tr key={expense.id} className="hover:bg-white/[0.02] transition-colors">
+                      <td className="px-8 py-6 text-sm font-medium text-charcoal-light">
+                        {format(new Date(expense.created_at), 'MMM d, yyyy')}
+                      </td>
+                      <td className="px-8 py-6">
+                        <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase border bg-white/5 text-white/80 border-white/10`}>
+                          {expense.category}
+                        </span>
+                      </td>
+                      <td className="px-8 py-6">
+                        {expense.is_academy ? (
+                          <div className="flex flex-col gap-1 items-start">
+                            <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[9px] font-black uppercase tracking-wider">
+                              Academy
+                            </span>
+                            {expense.programs?.name && (
+                              <span className="text-[10px] text-white/40 font-bold uppercase tracking-wider">
+                                {expense.programs.name}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded bg-white/5 text-white/55 border border-white/10 text-[9px] font-black uppercase tracking-wider">
+                            Arena Operations
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-8 py-6 text-sm font-medium max-w-xs truncate text-white">
+                        {expense.description}
+                      </td>
+                      <td className="px-8 py-6 font-black text-white text-lg">
+                        KES {expense.amount.toLocaleString()}
+                      </td>
+                      <td className="px-8 py-6">
+                        {expense.receipt_url ? (
+                          <a 
+                            href={expense.receipt_url} 
+                            target="_blank" 
+                            rel="noreferrer"
+                            className="flex items-center gap-2 text-gold hover:text-white transition-colors font-bold text-xs"
+                          >
+                            <ImageIcon className="w-4 h-4" /> VIEW
+                          </a>
+                        ) : (
+                          <span className="text-[10px] font-bold text-white/40 uppercase italic">No Receipt</span>
+                        )}
+                      </td>
+                      <td className="px-8 py-6 text-xs font-bold text-charcoal-light/75">
+                        {expense.logged_by_staff?.name || 'Unknown'}
+                      </td>
+                      <td className="px-8 py-6 text-right">
+                        <div className="relative inline-block text-left">
+                          <button 
+                            onClick={() => setActiveMenuExpenseId(activeMenuExpenseId === expense.id ? null : expense.id)}
+                            className="p-2.5 hover:bg-white/5 rounded-xl transition-all relative"
+                          >
+                            <MoreVertical className="w-4 h-4 text-white/40 hover:text-white" />
+                          </button>
+                          
+                          {activeMenuExpenseId === expense.id && (
+                            <>
+                              <div 
+                                className="fixed inset-0 z-40 bg-transparent" 
+                                onClick={() => setActiveMenuExpenseId(null)}
+                              />
+                              <div className="absolute right-0 mt-2 w-48 rounded-2xl bg-charcoal border border-white/10 shadow-2xl z-50 overflow-hidden divide-y divide-white/5 py-1 text-left animate-in fade-in slide-in-from-top-2 duration-200">
+                                <button
+                                  onClick={() => {
+                                    setSelectedExpense(expense);
+                                    setEditFormData({
+                                      id: expense.id,
+                                      category: expense.category,
+                                      amount: expense.amount.toString(),
+                                      description: expense.description,
+                                      date: format(new Date(expense.created_at), 'yyyy-MM-dd'),
+                                      is_academy: expense.is_academy,
+                                      program_id: expense.program_id?.toString() || ''
+                                    });
+                                    setIsEditModalOpen(true);
+                                    setActiveMenuExpenseId(null);
+                                  }}
+                                  className="w-full px-4 py-2.5 text-xs font-bold text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-3 transition-colors"
+                                >
+                                  Edit Expense
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteExpense(expense)}
+                                  className="w-full px-4 py-2.5 text-xs font-bold text-red-400 hover:text-red-300 hover:bg-red-500/10 flex items-center gap-3 transition-colors"
+                                >
+                                  Delete Expense
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
-
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-surface/50 border-b border-border-color">
-              <th className="px-6 py-4 text-xs uppercase font-bold text-charcoal-light tracking-wider">Date</th>
-              <th className="px-6 py-4 text-xs uppercase font-bold text-charcoal-light tracking-wider">Category</th>
-              <th className="px-6 py-4 text-xs uppercase font-bold text-charcoal-light tracking-wider">Description</th>
-              <th className="px-6 py-4 text-xs uppercase font-bold text-charcoal-light tracking-wider">Amount</th>
-              <th className="px-6 py-4 text-xs uppercase font-bold text-charcoal-light tracking-wider">Receipt</th>
-              <th className="px-6 py-4 text-xs uppercase font-bold text-charcoal-light tracking-wider">Logged By</th>
-              <th className="px-6 py-4"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border-color">
-            {isLoading ? (
-              [1, 2, 3, 4, 5].map(i => (
-                <tr key={i} className="animate-pulse">
-                  <td colSpan={7} className="px-6 py-6 h-12 bg-surface/10"></td>
-                </tr>
-              ))
-            ) : expenses.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="px-6 py-20 text-center">
-                  <div className="flex flex-col items-center opacity-40">
-                    <Receipt className="w-12 h-12 mb-4" />
-                    <p className="font-bold text-lg">No expenses logged yet</p>
-                    <p className="text-sm">Click the button above to start tracking costs.</p>
-                  </div>
-                </td>
-              </tr>
-            ) : (
-              expenses.map((expense) => (
-                <tr key={expense.id} className="hover:bg-surface/30 transition-colors">
-                  <td className="px-6 py-4 text-sm font-medium">
-                    {format(new Date(expense.created_at), 'MMM d, yyyy')}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase border ${getCategoryColor(expense.category)}`}>
-                      {expense.category}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm font-medium max-w-xs truncate">
-                    {expense.description}
-                  </td>
-                  <td className="px-6 py-4 font-bold text-forest">
-                    KES {expense.amount.toLocaleString()}
-                  </td>
-                  <td className="px-6 py-4">
-                    {expense.receipt_url ? (
-                      <a 
-                        href={expense.receipt_url} 
-                        target="_blank" 
-                        rel="noreferrer"
-                        className="flex items-center gap-2 text-gold hover:text-gold-dark transition-colors font-bold text-xs"
-                      >
-                        <ImageIcon className="w-4 h-4" /> VIEW
-                      </a>
-                    ) : (
-                      <span className="text-[10px] font-bold text-muted uppercase italic">No Receipt</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-xs font-bold text-charcoal-light">
-                    {expense.logged_by_staff?.name || 'Unknown'}
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <button className="p-2 hover:bg-surface rounded-lg transition-colors">
-                      <MoreVertical className="w-4 h-4 text-charcoal-light" />
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
       </div>
 
       {/* Log Expense Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-charcoal/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-            <div className="p-8 border-b border-border-color flex justify-between items-center bg-forest text-white">
+          <div className="glass rounded-[2.5rem] w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 border border-white/10">
+            <div className="p-8 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
               <div>
-                <h2 className="text-2xl font-display font-bold italic tracking-tight">LOG NEW EXPENSE</h2>
-                <p className="text-white/60 text-xs font-bold uppercase tracking-widest mt-1">Operational Cost Tracking</p>
+                <h2 className="text-2xl font-display font-extrabold italic tracking-tight text-white">LOG NEW EXPENSE</h2>
+                <p className="text-gold text-[10px] font-black uppercase tracking-widest mt-1">Operational Cost Tracking</p>
               </div>
               <button 
                 onClick={() => setIsModalOpen(false)}
-                className="p-2 hover:bg-white/10 rounded-xl transition-colors"
+                className="p-2 hover:bg-white/10 rounded-xl transition-colors text-white"
               >
                 <X className="w-6 h-6" />
               </button>
@@ -271,57 +496,90 @@ export default function ExpensesPage() {
             <form onSubmit={handleSubmit} className="p-8 space-y-6">
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="text-xs font-black uppercase tracking-widest text-muted">Category</label>
+                  <label className="text-xs font-black uppercase tracking-widest text-gold">Category</label>
                   <select 
                     required
                     value={formData.category}
                     onChange={(e) => setFormData({...formData, category: e.target.value})}
-                    className="w-full px-4 py-3 rounded-xl border border-border-color bg-surface focus:outline-none focus:ring-2 focus:ring-gold/50 font-bold text-sm appearance-none"
+                    className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none font-bold text-sm appearance-none"
                   >
-                    <option value="instructor">Instructor Payout</option>
-                    <option value="maintenance">Maintenance</option>
-                    <option value="operations">General Operations</option>
-                    <option value="marketing">Marketing</option>
+                    <option value="instructor" className="bg-forest-dark text-white">Instructor Payout</option>
+                    <option value="maintenance" className="bg-forest-dark text-white">Maintenance</option>
+                    <option value="operations" className="bg-forest-dark text-white">General Operations</option>
+                    <option value="marketing" className="bg-forest-dark text-white">Marketing</option>
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-black uppercase tracking-widest text-muted">Date</label>
+                  <label className="text-xs font-black uppercase tracking-widest text-gold">Date</label>
                   <input 
                     type="date" 
                     required
                     value={formData.date}
                     onChange={(e) => setFormData({...formData, date: e.target.value})}
-                    className="w-full px-4 py-3 rounded-xl border border-border-color bg-surface focus:outline-none focus:ring-2 focus:ring-gold/50 font-bold text-sm"
+                    className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none font-bold text-sm"
                   />
                 </div>
               </div>
 
+              {/* Segregated Business Unit toggles */}
+              <div className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-xs font-black uppercase tracking-widest text-white block">Is Academy Expense?</label>
+                    <span className="text-[10px] text-white/30 font-medium">Toggle if this belongs to youth/fitness programs</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, is_academy: !formData.is_academy })}
+                    className={`w-12 h-6 rounded-full p-1 transition-all duration-300 ${formData.is_academy ? 'bg-gold animate-pulse' : 'bg-white/10'}`}
+                  >
+                    <div className={`w-4 h-4 rounded-full bg-forest transition-all duration-300 ${formData.is_academy ? 'translate-x-6' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+
+                {formData.is_academy && (
+                  <div className="space-y-2 pt-4 border-t border-white/5 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <label className="text-xs font-black uppercase tracking-widest text-gold">Bind to Program</label>
+                    <select
+                      value={formData.program_id}
+                      onChange={(e) => setFormData({ ...formData, program_id: e.target.value })}
+                      className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none font-bold text-sm appearance-none"
+                    >
+                      <option value="" className="bg-forest-dark text-white">General Academy (No specific program)</option>
+                      {programs.map(prog => (
+                        <option key={prog.id} value={prog.id.toString()} className="bg-forest-dark text-white">{prog.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
               <div className="space-y-2">
-                <label className="text-xs font-black uppercase tracking-widest text-muted">Amount (KES)</label>
+                <label className="text-xs font-black uppercase tracking-widest text-gold">Amount (KES)</label>
                 <input 
                   type="number" 
                   required
                   placeholder="0.00"
                   value={formData.amount}
                   onChange={(e) => setFormData({...formData, amount: e.target.value})}
-                  className="w-full px-4 py-3 rounded-xl border border-border-color bg-surface focus:outline-none focus:ring-2 focus:ring-gold/50 font-display font-bold text-xl italic"
+                  className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none font-display font-bold text-xl italic"
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-black uppercase tracking-widest text-muted">Description</label>
+                <label className="text-xs font-black uppercase tracking-widest text-gold">Description</label>
                 <textarea 
                   required
                   rows={3}
                   placeholder="What was this for?"
                   value={formData.description}
                   onChange={(e) => setFormData({...formData, description: e.target.value})}
-                  className="w-full px-4 py-3 rounded-xl border border-border-color bg-surface focus:outline-none focus:ring-2 focus:ring-gold/50 font-medium text-sm"
+                  className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none font-medium text-sm"
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-black uppercase tracking-widest text-muted">Receipt / Invoice</label>
+                <label className="text-xs font-black uppercase tracking-widest text-gold">Receipt / Invoice</label>
                 <div className="relative group">
                   <input 
                     type="file" 
@@ -334,7 +592,7 @@ export default function ExpensesPage() {
                     htmlFor="receipt-upload"
                     className={`
                       w-full flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-2xl cursor-pointer transition-all
-                      ${file ? 'border-success bg-success/5' : 'border-border-color bg-surface hover:border-gold hover:bg-gold/5'}
+                      ${file ? 'border-success bg-success/5' : 'border-white/10 bg-white/5 hover:border-gold hover:bg-gold/5'}
                     `}
                   >
                     {file ? (
@@ -345,9 +603,9 @@ export default function ExpensesPage() {
                       </div>
                     ) : (
                       <div className="flex flex-col items-center">
-                        <ImageIcon className="w-8 h-8 text-muted mb-2 group-hover:text-gold transition-colors" />
-                        <span className="text-xs font-bold text-muted group-hover:text-gold transition-colors">Click to upload receipt</span>
-                        <span className="text-[10px] text-muted/60 uppercase font-bold mt-1">Image files only</span>
+                        <ImageIcon className="w-8 h-8 text-white/40 mb-2 group-hover:text-gold transition-colors" />
+                        <span className="text-xs font-bold text-white/40 group-hover:text-gold transition-colors">Click to upload receipt</span>
+                        <span className="text-[10px] text-white/30 uppercase font-bold mt-1">Image files only</span>
                       </div>
                     )}
                   </label>
@@ -358,19 +616,142 @@ export default function ExpensesPage() {
                 <button 
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full flex items-center justify-center gap-3 bg-gold text-forest px-8 py-4 rounded-2xl font-bold text-sm tracking-[0.2em] uppercase transition-all shadow-xl shadow-gold/20 active:scale-95 disabled:opacity-50 disabled:scale-100"
+                  className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-gradient-to-r from-gold to-gold-muted text-forest rounded-2xl font-extrabold shadow-gold-md hover:shadow-gold-lg transition-all duration-300 spring-bounce hover:scale-[1.01] active:scale-[0.99] uppercase text-sm tracking-[0.15em] disabled:opacity-50"
                 >
                   {isSubmitting ? (
                     <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <Loader2 className="w-5 h-5 animate-spin text-forest" />
                       SAVING...
                     </>
                   ) : (
                     <>
                       SAVE EXPENSE
-                      <ChevronRight className="w-5 h-5" />
+                      <ChevronRight className="w-5 h-5 text-forest" />
                     </>
                   )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Expense Modal */}
+      {isEditModalOpen && selectedExpense && (
+        <div className="fixed inset-0 bg-charcoal/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="glass rounded-[2.5rem] w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 border border-white/10">
+            <div className="p-8 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
+              <div>
+                <h2 className="text-2xl font-display font-extrabold italic tracking-tight text-white">EDIT EXPENSE</h2>
+                <p className="text-gold text-[10px] font-black uppercase tracking-widest mt-1">Operational Cost Management</p>
+              </div>
+              <button 
+                onClick={() => setIsEditModalOpen(false)}
+                className="p-2 hover:bg-white/10 rounded-xl transition-colors text-white"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleEditExpense} className="p-8 space-y-6">
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-xs font-black uppercase tracking-widest text-gold">Category</label>
+                  <select 
+                    required
+                    value={editFormData.category}
+                    onChange={(e) => setEditFormData({...editFormData, category: e.target.value})}
+                    className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none font-bold text-sm appearance-none"
+                  >
+                    <option value="instructor" className="bg-forest-dark text-white">Instructor Payout</option>
+                    <option value="maintenance" className="bg-forest-dark text-white">Maintenance</option>
+                    <option value="operations" className="bg-forest-dark text-white">General Operations</option>
+                    <option value="marketing" className="bg-forest-dark text-white">Marketing</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-black uppercase tracking-widest text-gold">Date</label>
+                  <input 
+                    type="date" 
+                    required
+                    value={editFormData.date}
+                    onChange={(e) => setEditFormData({...editFormData, date: e.target.value})}
+                    className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none font-bold text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Segregated Business Unit toggles */}
+              <div className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-xs font-black uppercase tracking-widest text-white block">Is Academy Expense?</label>
+                    <span className="text-[10px] text-white/30 font-medium">Toggle if this belongs to youth/fitness programs</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditFormData({ ...editFormData, is_academy: !editFormData.is_academy })}
+                    className={`w-12 h-6 rounded-full p-1 transition-all duration-300 ${editFormData.is_academy ? 'bg-gold' : 'bg-white/10'}`}
+                  >
+                    <div className={`w-4 h-4 rounded-full bg-forest transition-all duration-300 ${editFormData.is_academy ? 'translate-x-6' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+
+                {editFormData.is_academy && (
+                  <div className="space-y-2 pt-4 border-t border-white/5 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <label className="text-xs font-black uppercase tracking-widest text-gold">Bind to Program</label>
+                    <select
+                      value={editFormData.program_id}
+                      onChange={(e) => setEditFormData({ ...editFormData, program_id: e.target.value })}
+                      className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none font-bold text-sm appearance-none"
+                    >
+                      <option value="" className="bg-forest-dark text-white">General Academy (No specific program)</option>
+                      {programs.map(prog => (
+                        <option key={prog.id} value={prog.id.toString()} className="bg-forest-dark text-white">{prog.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-black uppercase tracking-widest text-gold">Amount (KES)</label>
+                <input 
+                  type="number" 
+                  required
+                  placeholder="0.00"
+                  value={editFormData.amount}
+                  onChange={(e) => setEditFormData({...editFormData, amount: e.target.value})}
+                  className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none font-display font-bold text-xl italic"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-black uppercase tracking-widest text-gold">Description</label>
+                <textarea 
+                  required
+                  rows={3}
+                  placeholder="What was this for?"
+                  value={editFormData.description}
+                  onChange={(e) => setEditFormData({...editFormData, description: e.target.value})}
+                  className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none font-medium text-sm"
+                />
+              </div>
+
+              <div className="pt-4 flex gap-4">
+                <button 
+                  type="button" 
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="flex-1 py-4 bg-white/5 hover:bg-white/10 text-white rounded-2xl font-bold uppercase transition-all"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  disabled={isEditSubmitting}
+                  className="flex-1 py-4 bg-gradient-to-r from-gold to-gold-muted text-forest rounded-2xl font-extrabold shadow-gold-md hover:shadow-gold-lg transition-all duration-300 spring-bounce hover:scale-[1.01] active:scale-[0.99] uppercase text-sm tracking-[0.15em]"
+                >
+                  {isEditSubmitting ? 'SAVING...' : 'SAVE CHANGES'}
                 </button>
               </div>
             </form>
@@ -380,3 +761,4 @@ export default function ExpensesPage() {
     </div>
   );
 }
+

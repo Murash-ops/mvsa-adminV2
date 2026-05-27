@@ -36,23 +36,23 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="min-h-screen bg-surface flex items-center justify-center p-4">
+    <main className="min-h-screen bg-transparent flex items-center justify-center p-4 relative overflow-hidden animate-entrance">
       {/* Background Accent */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-[10%] -right-[10%] w-[40%] h-[40%] bg-forest/5 rounded-full blur-3xl" />
-        <div className="absolute -bottom-[10%] -left-[10%] w-[40%] h-[40%] bg-gold/5 rounded-full blur-3xl" />
+        <div className="absolute -top-[10%] -right-[10%] w-[40%] h-[40%] bg-gold/5 rounded-full blur-3xl" />
+        <div className="absolute -bottom-[10%] -left-[10%] w-[40%] h-[40%] bg-forest-light/10 rounded-full blur-3xl" />
       </div>
 
       <div className="w-full max-w-md relative">
-        <div className="bg-white rounded-3xl shadow-xl shadow-forest/5 border border-border-color overflow-hidden">
+        <div className="bg-card rounded-3xl shadow-pitch border border-white/5 overflow-hidden">
           {/* Header */}
-          <div className="bg-forest p-10 text-center relative overflow-hidden">
-            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10" />
+          <div className="bg-forest-dark/45 p-10 text-center relative overflow-hidden border-b border-white/5">
+            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-[0.02]" />
             <div className="relative z-10">
-              <div className="w-16 h-16 bg-gold/20 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-gold/30">
+              <div className="w-16 h-16 bg-gold/10 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-gold/20">
                 <Shield className="w-8 h-8 text-gold" />
               </div>
-              <h1 className="text-3xl font-bold font-display tracking-tight text-white italic mb-2">MVSA ADMIN</h1>
+              <h1 className="text-3xl font-extrabold font-display tracking-tight text-white italic mb-2">MVSA ADMIN</h1>
               <p className="text-white/60 text-sm font-medium">Secure Access Portal</p>
             </div>
           </div>
@@ -68,30 +68,30 @@ export default function LoginPage() {
               )}
 
               <div className="space-y-2">
-                <label className="text-xs font-bold text-charcoal-light uppercase tracking-widest ml-1">Email Address</label>
+                <label className="text-xs font-bold text-white/40 uppercase tracking-widest ml-1">Email Address</label>
                 <div className="relative">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted" />
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/30" />
                   <input
                     type="email"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-12 pr-4 py-4 bg-surface border border-border-color rounded-2xl focus:outline-none focus:ring-2 focus:ring-gold/20 focus:border-gold transition-all"
+                    className="w-full pl-12 pr-4 py-4 bg-white/5 border border-white/10 text-white placeholder-white/30 rounded-2xl focus:outline-none focus:ring-4 focus:ring-gold/5 focus:border-gold/30 transition-all font-medium"
                     placeholder="name@example.com"
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-bold text-charcoal-light uppercase tracking-widest ml-1">Password</label>
+                <label className="text-xs font-bold text-white/40 uppercase tracking-widest ml-1">Password</label>
                 <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted" />
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/30" />
                   <input
                     type="password"
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-12 pr-4 py-4 bg-surface border border-border-color rounded-2xl focus:outline-none focus:ring-2 focus:ring-gold/20 focus:border-gold transition-all"
+                    className="w-full pl-12 pr-4 py-4 bg-white/5 border border-white/10 text-white placeholder-white/30 rounded-2xl focus:outline-none focus:ring-4 focus:ring-gold/5 focus:border-gold/30 transition-all font-medium"
                     placeholder="••••••••"
                   />
                 </div>
@@ -100,11 +100,11 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-4 bg-forest hover:bg-forest-dark text-white rounded-2xl font-bold tracking-wide transition-all shadow-lg shadow-forest/20 active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full py-4 bg-gradient-to-r from-gold to-gold-muted hover:from-gold hover:to-gold/90 text-forest rounded-2xl font-extrabold tracking-wide transition-all shadow-gold-md hover:shadow-gold-lg hover:scale-[1.02] active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 spring-bounce"
               >
                 {isLoading ? (
                   <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <Loader2 className="w-5 h-5 animate-spin text-forest" />
                     AUTHENTICATING...
                   </>
                 ) : (
@@ -113,8 +113,8 @@ export default function LoginPage() {
               </button>
             </form>
 
-            <div className="mt-8 pt-8 border-t border-border-color text-center">
-              <p className="text-muted text-xs font-medium">
+            <div className="mt-8 pt-8 border-t border-white/5 text-center">
+              <p className="text-white/30 text-[11px] font-medium leading-relaxed">
                 Mountain View Sports Arena © 2026<br/>
                 Unauthorized access is strictly prohibited.
               </p>

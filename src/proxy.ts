@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
   })
@@ -30,10 +30,11 @@ export async function middleware(request: NextRequest) {
   // Refresh session
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Auth Protection Logic
-  const isLoginPage = request.nextUrl.pathname === '/login'
+  const pathname = request.nextUrl.pathname
+  const isLoginPage = pathname === '/login'
+  const isApiRoute = pathname.startsWith('/api')
 
-  if (!user && !isLoginPage) {
+  if (!user && !isLoginPage && !isApiRoute) {
     // Not logged in -> redirect to login
     const url = request.nextUrl.clone()
     url.pathname = '/login'

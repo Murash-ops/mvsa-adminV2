@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { DM_Sans, Cinzel, JetBrains_Mono } from "next/font/google";
+import { DM_Sans, Cinzel, JetBrains_Mono, Outfit } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/AuthContext";
 
@@ -7,6 +7,12 @@ const dmSans = DM_Sans({
   variable: "--font-dm-sans",
   subsets: ["latin"],
   weight: ["400", "500", "700"],
+});
+
+const outfit = Outfit({
+  variable: "--font-outfit",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800", "900"],
 });
 
 const cinzel = Cinzel({
@@ -39,7 +45,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${dmSans.variable} ${cinzel.variable} ${jetbrainsMono.variable} font-sans bg-surface text-charcoal min-h-screen antialiased`}>
+      <body className={`${dmSans.variable} ${outfit.variable} ${cinzel.variable} ${jetbrainsMono.variable} font-sans bg-surface text-charcoal-light min-h-screen antialiased`}>
         <AuthProvider>
           {children}
         </AuthProvider>

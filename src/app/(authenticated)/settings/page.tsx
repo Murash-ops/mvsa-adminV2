@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createClient } from '@/utils/supabase/client';
+import { useAuth } from '@/components/AuthContext';
 import {
   Settings,
   MapPin,
@@ -19,7 +20,56 @@ import {
   CheckCircle,
   Plus,
   Sunrise,
+  Edit3,
+  Sparkles,
+  User,
+  Lock,
+  Eye,
+  Palette,
+  SunMoon,
+  Bell,
+  MessageSquare,
+  ShieldCheck,
+  Trophy,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
+
+const Instagram = (props: any) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
+    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+    <line x1="17.5" x2="17.51" y1="6.5" y2="6.5" />
+  </svg>
+);
+
+const Facebook = (props: any) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
+  </svg>
+);
 
 type Venue = {
   id: number;
@@ -34,308 +84,1011 @@ type Venue = {
   created_at: string;
 };
 
-const BUSINESS_INFO = {
-  name: 'Mountain View Sports Arena',
-  shortName: 'MVSA',
-  tagline: 'Home of Football and Fitness.',
-  address: 'Nairobi, Kenya',
-  whatsapp: '0798 258 950',
-  arena: '0783 209 442',
-  academy: '0116 619 476',
-  email: 'info@mvsa.co.ke',
-  website: 'www.mvsa.co.ke',
-  instagram: 'https://instagram.com/mvsa',
-  hours: {
-    weekdays: '6:00 AM – 10:00 PM',
-    weekends: '7:00 AM – 9:00 PM',
-  },
-};
-
 export default function SettingsPage() {
   const supabase = createClient();
-  const [venues, setVenues] = useState<Venue[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [editVenue, setEditVenue] = useState<Venue | null>(null);
-  const [isEditOpen, setIsEditOpen] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const [editRates, setEditRates] = useState({ morning: 0, off_peak: 0, peak: 0, weekend: 0 });
-  const [editName, setEditName] = useState('');
+  const { staff, user } = useAuth();
 
-  const fetchVenues = async () => {
+  // Selected active tab state
+  const [activeTab, setActiveTab] = useState<string>('account');
+
+  // Loading & Saving States
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
+
+  // 1. Facility Settings State
+  const [facilityName, setFacilityName] = useState('');
+  const [facilityTagline, setFacilityTagline] = useState('');
+  const [facilityDescription, setFacilityDescription] = useState('');
+  const [phonePrimary, setPhonePrimary] = useState('');
+  const [phoneSecondary, setPhoneSecondary] = useState('');
+  const [whatsapp, setWhatsapp] = useState('');
+  const [email, setEmail] = useState('');
+  const [address, setAddress] = useState('');
+  const [openTime, setOpenTime] = useState('06:00');
+  const [closeTime, setCloseTime] = useState('23:00');
+  const [instagramHandle, setInstagramHandle] = useState('');
+  const [facebookPage, setFacebookPage] = useState('');
+
+  // 2. Booking Settings State
+  const [depositEnforced, setDepositEnforced] = useState(true);
+  const [depositValue, setDepositValue] = useState<number>(50);
+  const [depositType, setDepositType] = useState<'percentage' | 'fixed'>('percentage');
+  const [slotDuration, setSlotDuration] = useState<number>(60);
+  const [bookingWindowDays, setBookingWindowDays] = useState<number>(30);
+  const [cancellationPolicy, setCancellationPolicy] = useState('');
+
+  // 3. Notification Settings State
+  const [smsSender, setSmsSender] = useState('MVSA');
+  const [autoSmsConfirmation, setAutoSmsConfirmation] = useState(true);
+  const [autoSmsPayment, setAutoSmsPayment] = useState(true);
+  const [autoSmsReminder, setAutoSmsReminder] = useState(true);
+  const [reminderLeadTime, setReminderLeadTime] = useState<number>(2);
+
+  // 4. Appearance Settings State
+  const [darkMode, setDarkMode] = useState(true);
+  const [logoUrl, setLogoUrl] = useState('');
+  const [heroImageUrl, setHeroImageUrl] = useState('');
+
+  // 5. Account Settings State
+  const [accountName, setAccountName] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  // 6. Venue Management State (Legacy/Pre-existing Rate Configuration)
+  const [venues, setVenues] = useState<Venue[]>([]);
+  const [editVenue, setEditVenue] = useState<Venue | null>(null);
+  const [isEditVenueOpen, setIsEditVenueOpen] = useState(false);
+  const [editVenueRates, setEditVenueRates] = useState({ morning: 0, off_peak: 0, peak: 0, weekend: 0 });
+  const [editVenueName, setEditVenueName] = useState('');
+
+  // Role permissions checking
+  const userRole = (staff?.role as string) || '';
+  const isSuperAdmin = userRole === 'super_admin';
+  const isAdmin = userRole === 'super_admin' || userRole === 'admin' || userRole === 'boss' || userRole === 'receptionist' || userRole === 'academy_coo';
+
+  // Load all settings from Database on mount
+  const loadAllSettings = async () => {
     setIsLoading(true);
-    const { data, error } = await supabase
-      .from('venues')
-      .select('*')
-      .order('id', { ascending: true });
-    if (!error && data) setVenues(data as Venue[]);
-    setIsLoading(false);
+    try {
+      // Fetch all site configuration records
+      const { data, error } = await supabase.from('site_content').select('*');
+      if (!error && data) {
+        // Parse facility settings
+        const facilityRow = data.find((r: any) => r.key === 'facility_settings');
+        if (facilityRow?.value) {
+          const v = facilityRow.value;
+          setFacilityName(v.name || '');
+          setFacilityTagline(v.tagline || '');
+          setFacilityDescription(v.description || '');
+          setPhonePrimary(v.phone_primary || '');
+          setPhoneSecondary(v.phone_secondary || '');
+          setWhatsapp(v.whatsapp || '');
+          setEmail(v.email || '');
+          setAddress(v.address || '');
+          setOpenTime(v.open_time || '06:00');
+          setCloseTime(v.close_time || '23:00');
+          setInstagramHandle(v.instagram || '');
+          setFacebookPage(v.facebook || '');
+        }
+
+        // Parse booking settings
+        const bookingRow = data.find((r: any) => r.key === 'booking_settings');
+        if (bookingRow?.value) {
+          const v = bookingRow.value;
+          setDepositEnforced(v.deposit_enforced !== false);
+          setDepositValue(v.deposit_value || 50);
+          setDepositType(v.deposit_type || 'percentage');
+          setSlotDuration(v.slot_duration || 60);
+          setBookingWindowDays(v.booking_window_days || 30);
+          setCancellationPolicy(v.cancellation_policy || '');
+        }
+
+        // Parse notification settings
+        const notificationRow = data.find((r: any) => r.key === 'notification_settings');
+        if (notificationRow?.value) {
+          const v = notificationRow.value;
+          setSmsSender(v.sms_sender || 'MVSA');
+          setAutoSmsConfirmation(v.auto_sms_confirmation !== false);
+          setAutoSmsPayment(v.auto_sms_payment !== false);
+          setAutoSmsReminder(v.auto_sms_reminder !== false);
+          setReminderLeadTime(v.reminder_lead_time_hours || 2);
+        }
+
+        // Parse appearance settings
+        const appearanceRow = data.find((r: any) => r.key === 'appearance_settings');
+        if (appearanceRow?.value) {
+          const v = appearanceRow.value;
+          setDarkMode(v.dark_mode !== false);
+          setLogoUrl(v.logo_url || '');
+          setHeroImageUrl(v.hero_image_url || '');
+        }
+      }
+
+      // Load venues
+      const { data: venuesData } = await supabase
+        .from('venues')
+        .select('*')
+        .order('id', { ascending: true });
+      if (venuesData) {
+        setVenues(venuesData as Venue[]);
+      }
+    } catch (err: any) {
+      console.error('Error loading settings from DB:', err.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  useEffect(() => { fetchVenues(); }, []);
+  useEffect(() => {
+    loadAllSettings();
+  }, []);
 
-  const openEdit = (venue: Venue) => {
+  // Update profile states when Auth state loads
+  useEffect(() => {
+    if (staff) {
+      setAccountName(staff.name || '');
+      // Auto redirect active tab based on role permissions
+      if (isSuperAdmin) {
+        setActiveTab('facility');
+      } else if (isAdmin) {
+        setActiveTab('notification');
+      } else {
+        setActiveTab('account');
+      }
+    }
+  }, [staff]);
+
+  // Tab configurations dynamically checked
+  const navTabs = [
+    { id: 'facility', label: 'Facility Profile', icon: Building2, visible: isSuperAdmin },
+    { id: 'venues', label: 'Venue Pricing', icon: MapPin, visible: isSuperAdmin },
+    { id: 'booking', label: 'Booking Rules', icon: Clock, visible: isSuperAdmin },
+    { id: 'notification', label: 'SMS & Alerts', icon: Bell, visible: isAdmin },
+    { id: 'appearance', label: 'Appearance & Brand', icon: Palette, visible: isSuperAdmin },
+    { id: 'account', label: 'Account & Security', icon: User, visible: true },
+  ];
+
+  // 1. Save Facility Profile Settings
+  const handleSaveFacility = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    setSaveSuccess(null);
+    try {
+      const { error } = await supabase
+        .from('site_content')
+        .upsert({
+          key: 'facility_settings',
+          value: {
+            name: facilityName,
+            tagline: facilityTagline,
+            description: facilityDescription,
+            phone_primary: phonePrimary,
+            phone_secondary: phoneSecondary,
+            whatsapp: whatsapp,
+            email: email,
+            address: address,
+            open_time: openTime,
+            close_time: closeTime,
+            instagram: instagramHandle,
+            facebook: facebookPage
+          },
+          updated_by: user?.id
+        });
+      if (error) throw error;
+      setSaveSuccess('facility');
+      setTimeout(() => setSaveSuccess(null), 2000);
+    } catch (err: any) {
+      alert('Error updating facility profile: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // 2. Save Booking Rules
+  const handleSaveBookingSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    setSaveSuccess(null);
+    try {
+      const { error } = await supabase
+        .from('site_content')
+        .upsert({
+          key: 'booking_settings',
+          value: {
+            deposit_enforced: depositEnforced,
+            deposit_value: Number(depositValue),
+            deposit_type: depositType,
+            slot_duration: Number(slotDuration),
+            booking_window_days: Number(bookingWindowDays),
+            cancellation_policy: cancellationPolicy
+          },
+          updated_by: user?.id
+        });
+      if (error) throw error;
+      setSaveSuccess('booking');
+      setTimeout(() => setSaveSuccess(null), 2000);
+    } catch (err: any) {
+      alert('Error updating booking rules: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // 3. Save Notification Settings
+  const handleSaveNotificationSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    setSaveSuccess(null);
+    try {
+      const { error } = await supabase
+        .from('site_content')
+        .upsert({
+          key: 'notification_settings',
+          value: {
+            sms_sender: smsSender,
+            auto_sms_confirmation: autoSmsConfirmation,
+            auto_sms_payment: autoSmsPayment,
+            auto_sms_reminder: autoSmsReminder,
+            reminder_lead_time_hours: Number(reminderLeadTime)
+          },
+          updated_by: user?.id
+        });
+      if (error) throw error;
+      setSaveSuccess('notification');
+      setTimeout(() => setSaveSuccess(null), 2000);
+    } catch (err: any) {
+      alert('Error updating notifications: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // 4. Save Appearance Settings
+  const handleSaveAppearance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    setSaveSuccess(null);
+    try {
+      const { error } = await supabase
+        .from('site_content')
+        .upsert({
+          key: 'appearance_settings',
+          value: {
+            dark_mode: darkMode,
+            logo_url: logoUrl,
+            hero_image_url: heroImageUrl
+          },
+          updated_by: user?.id
+        });
+      if (error) throw error;
+      setSaveSuccess('appearance');
+      setTimeout(() => setSaveSuccess(null), 2000);
+    } catch (err: any) {
+      alert('Error updating appearance: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // 5. Save Account Settings (Updates profile name and Auth password)
+  const handleSaveAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    setSaveSuccess(null);
+    try {
+      // A. Update display name in staff table
+      if (user?.id) {
+        const { error: staffError } = await supabase
+          .from('staff')
+          .update({ name: accountName })
+          .eq('id', user.id);
+        if (staffError) throw staffError;
+      }
+
+      // B. Update password if provided
+      if (newPassword) {
+        if (newPassword !== confirmPassword) {
+          alert('Passwords do not match!');
+          setIsSaving(false);
+          return;
+        }
+        const { error: authError } = await supabase.auth.updateUser({
+          password: newPassword
+        });
+        if (authError) throw authError;
+        setNewPassword('');
+        setConfirmPassword('');
+      }
+
+      setSaveSuccess('account');
+      setTimeout(() => setSaveSuccess(null), 2000);
+    } catch (err: any) {
+      alert('Error updating account credentials: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Legacy Venue rate editor save
+  const openEditVenue = (venue: Venue) => {
     setEditVenue(venue);
-    setEditName(venue.name);
-    setEditRates({
+    setEditVenueName(venue.name);
+    setEditVenueRates({
       morning: venue.hourly_rates?.morning ?? 0,
       off_peak: venue.hourly_rates?.off_peak ?? 0,
       peak: venue.hourly_rates?.peak ?? 0,
       weekend: venue.hourly_rates?.weekend ?? 0,
     });
-    setIsEditOpen(true);
-    setSaveSuccess(false);
+    setIsEditVenueOpen(true);
+    setSaveSuccess(null);
   };
 
   const handleSaveVenue = async () => {
     if (!editVenue) return;
     setIsSaving(true);
-    const { error } = await supabase
-      .from('venues')
-      .update({
-        name: editName,
-        hourly_rates: {
-          morning: Number(editRates.morning),
-          off_peak: Number(editRates.off_peak),
-          peak: Number(editRates.peak),
-          weekend: Number(editRates.weekend),
-        },
-      })
-      .eq('id', editVenue.id);
+    try {
+      const { error } = await supabase
+        .from('venues')
+        .update({
+          name: editVenueName,
+          hourly_rates: {
+            morning: Number(editVenueRates.morning),
+            off_peak: Number(editVenueRates.off_peak),
+            peak: Number(editVenueRates.peak),
+            weekend: Number(editVenueRates.weekend),
+          },
+        })
+        .eq('id', editVenue.id);
 
-    if (error) {
-      alert('Error updating venue: ' + error.message);
-    } else {
-      setSaveSuccess(true);
-      fetchVenues();
+      if (error) throw error;
+      setSaveSuccess('venues');
+      
+      // Reload venues
+      const { data } = await supabase
+        .from('venues')
+        .select('*')
+        .order('id', { ascending: true });
+      if (data) setVenues(data as Venue[]);
+
       setTimeout(() => {
-        setIsEditOpen(false);
-        setSaveSuccess(false);
+        setIsEditVenueOpen(false);
+        setSaveSuccess(null);
       }, 1200);
+    } catch (err: any) {
+      alert('Error updating venue rates: ' + err.message);
+    } finally {
+      setIsSaving(false);
     }
-    setIsSaving(false);
   };
 
-  const venueTypeLabel = (type: string) =>
-    type === 'turf' ? 'Turf / Pitch' : 'Meeting Room';
-
-  const venueTypeColor = (type: string) =>
-    type === 'turf'
-      ? 'bg-green-100 text-green-800 border-green-200'
-      : 'bg-blue-100 text-blue-800 border-blue-200';
-
   return (
-    <div className="flex flex-col flex-1 p-8 bg-surface/50 min-h-full">
+    <div className="flex flex-col flex-1 p-6 lg:p-10 animate-entrance min-h-full">
       {/* Header */}
-      <header className="mb-10 animate-slide-up">
+      <header className="mb-10">
         <div className="flex items-center gap-2 mb-2">
           <div className="w-8 h-1 bg-gold rounded-full" />
-          <span className="text-[10px] font-black uppercase tracking-[0.3em] text-forest/60">Configuration</span>
+          <span className="text-[10px] font-black uppercase tracking-[0.3em] text-gold">Control Panel</span>
         </div>
-        <h1 className="text-5xl font-display font-extrabold text-forest tracking-tighter leading-none">
+        <h1 className="text-4xl lg:text-5xl font-display font-extrabold text-white tracking-tighter leading-none italic uppercase">
           SETTINGS
         </h1>
-        <p className="text-charcoal-light mt-2 font-medium">Manage venues, pricing, and arena configuration.</p>
+        <p className="text-white/40 text-sm font-medium mt-1">Configure facility profile, booking policies, SMS alerts, and account security.</p>
       </header>
 
-      <div className="space-y-8">
-        {/* ── Venue Management ── */}
-        <section>
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-forest/5 rounded-2xl flex items-center justify-center border border-forest/10">
-                <MapPin className="w-5 h-5 text-forest" />
-              </div>
-              <div>
-                <h2 className="font-display font-bold text-xl text-forest tracking-tight">Venue Management</h2>
-                <p className="text-xs text-charcoal-light font-medium">Configure pitches, rooms, and hourly pricing</p>
-              </div>
-            </div>
+      {isLoading ? (
+        <div className="flex-1 flex flex-col items-center justify-center py-32 gap-4">
+          <Loader2 className="w-12 h-12 text-gold animate-spin stroke-[1.5px]" />
+          <p className="text-white/40 text-sm font-bold uppercase tracking-wider font-mono">Synchronizing Settings...</p>
+        </div>
+      ) : (
+        <div className="flex flex-col md:flex-row gap-8 items-start">
+          {/* LEFT SIDEBAR NAVIGATION */}
+          <div className="w-full md:w-64 shrink-0 flex flex-col gap-1.5 bg-charcoal/20 border border-white/5 p-2 rounded-[1.5rem]">
+            {navTabs
+              .filter(t => t.visible)
+              .map(tab => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => {
+                      setActiveTab(tab.id);
+                      setSaveSuccess(null);
+                    }}
+                    className={`
+                      w-full flex items-center gap-3.5 px-5 py-4 rounded-2xl border text-sm font-bold transition-all text-left spring-bounce
+                      ${isActive
+                        ? 'bg-gradient-to-r from-gold/15 to-gold-muted/5 border-gold/40 text-gold shadow-gold-sm hover:scale-[1.01]'
+                        : 'bg-transparent border-transparent text-white/50 hover:bg-white/5 hover:text-white'
+                      }
+                    `}
+                  >
+                    <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-gold' : 'text-white/35'}`} />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {isLoading ? (
-              [1, 2, 3, 4].map(i => (
-                <div key={i} className="animate-pulse bg-white/60 rounded-[2rem] h-48 border border-white/20" />
-              ))
-            ) : venues.map((venue) => (
-              <div key={venue.id} className="relative group overflow-hidden">
-                <div className="absolute -inset-1 bg-gradient-to-br from-gold/15 to-forest/5 rounded-[2.2rem] blur opacity-0 group-hover:opacity-100 transition duration-700" />
-                <div className="relative bg-white/70 backdrop-blur-md border border-white/20 p-7 rounded-[2rem] shadow-xl">
-                  <div className="flex justify-between items-start mb-5">
-                    <div>
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border mb-2 ${venueTypeColor(venue.type)}`}>
-                        <Building2 className="w-3 h-3" />
-                        {venueTypeLabel(venue.type)}
-                      </span>
-                      <h3 className="font-display font-black text-xl text-forest tracking-tight leading-tight">
-                        {venue.name}
-                      </h3>
+          {/* MAIN FORM AREA */}
+          <div className="flex-1 w-full relative group">
+            <div className="absolute -inset-1 bg-gradient-to-r from-gold/10 to-gold-muted/5 rounded-[2.5rem] blur opacity-25" />
+            
+            <div className="relative glass border border-white/10 p-8 rounded-[2rem] shadow-pitch bg-charcoal/40 text-left">
+              
+              {/* --- SECTION 1: FACILITY PROFILE (super_admin) --- */}
+              {activeTab === 'facility' && isSuperAdmin && (
+                <form onSubmit={handleSaveFacility} className="space-y-6">
+                  <div>
+                    <h2 className="font-display font-black text-2xl text-white uppercase italic tracking-tight">Facility Identity</h2>
+                    <p className="text-white/40 text-xs mt-0.5">Define core branding metadata mapped to site_content.</p>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Facility Name</label>
+                      <input
+                        type="text"
+                        required
+                        value={facilityName}
+                        onChange={(e) => setFacilityName(e.target.value)}
+                        className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-bold"
+                      />
                     </div>
-                    <button
-                      onClick={() => openEdit(venue)}
-                      className="flex items-center gap-1.5 px-3.5 py-2 bg-forest/5 hover:bg-forest hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest text-forest transition-all border border-forest/10 hover:border-forest group/btn"
-                    >
-                      <Edit2 className="w-3.5 h-3.5 group-hover/btn:rotate-12 transition-transform" />
-                      Edit
-                    </button>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Motto / Tagline</label>
+                      <input
+                        type="text"
+                        required
+                        value={facilityTagline}
+                        onChange={(e) => setFacilityTagline(e.target.value)}
+                        className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-bold"
+                      />
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-4 gap-2">
-                    {[
-                      { label: 'Morning', value: venue.hourly_rates?.morning, icon: Sunrise },
-                      { label: 'Off-Peak', value: venue.hourly_rates?.off_peak, icon: Clock },
-                      { label: 'Peak', value: venue.hourly_rates?.peak, icon: DollarSign },
-                      { label: 'Weekend', value: venue.hourly_rates?.weekend, icon: DollarSign },
-                    ].map(({ label, value, icon: Icon }) => (
-                      <div key={label} className="bg-forest/3 border border-forest/8 rounded-2xl p-2.5 text-center">
-                        <div className="flex items-center justify-center gap-1 mb-1">
-                          <Icon className="w-3 h-3 text-forest/40" />
-                          <span className="text-[8px] font-black uppercase tracking-wider text-forest/40">{label}</span>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Short Facility Description</label>
+                    <textarea
+                      required
+                      rows={3}
+                      value={facilityDescription}
+                      onChange={(e) => setFacilityDescription(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-medium resize-none leading-relaxed"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Primary Phone Number</label>
+                      <input
+                        type="text"
+                        required
+                        value={phonePrimary}
+                        onChange={(e) => setPhonePrimary(e.target.value)}
+                        className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-mono font-bold"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Secondary Phone Number</label>
+                      <input
+                        type="text"
+                        value={phoneSecondary}
+                        onChange={(e) => setPhoneSecondary(e.target.value)}
+                        className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-mono font-bold"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-gold uppercase tracking-wider">WhatsApp Contact Number</label>
+                      <input
+                        type="text"
+                        required
+                        value={whatsapp}
+                        onChange={(e) => setWhatsapp(e.target.value)}
+                        className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-mono font-bold"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Official Email Address</label>
+                      <input
+                        type="email"
+                        required
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-bold"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Physical Address</label>
+                      <input
+                        type="text"
+                        required
+                        value={address}
+                        onChange={(e) => setAddress(e.target.value)}
+                        className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-bold"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Opening Time</label>
+                      <input
+                        type="time"
+                        required
+                        value={openTime}
+                        onChange={(e) => setOpenTime(e.target.value)}
+                        className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-mono font-bold"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Closing Time</label>
+                      <input
+                        type="time"
+                        required
+                        value={closeTime}
+                        onChange={(e) => setCloseTime(e.target.value)}
+                        className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-mono font-bold"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-4 border-t border-white/5">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-gold uppercase tracking-wider flex items-center gap-1.5">
+                        <Instagram className="w-3.5 h-3.5" /> Instagram Handle
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. mvsa_turf"
+                        value={instagramHandle}
+                        onChange={(e) => setInstagramHandle(e.target.value)}
+                        className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-bold"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-gold uppercase tracking-wider flex items-center gap-1.5">
+                        <Facebook className="w-3.5 h-3.5" /> Facebook Page
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. MountainViewArena"
+                        value={facebookPage}
+                        onChange={(e) => setFacebookPage(e.target.value)}
+                        className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-bold"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="pt-6 border-t border-white/5 flex justify-between items-center gap-4">
+                    <p className="text-[9px] text-white/30 font-bold uppercase tracking-widest font-mono">
+                      Database: site_content.facility_settings
+                    </p>
+                    <button
+                      type="submit"
+                      disabled={isSaving}
+                      className="px-8 py-3.5 bg-gradient-to-r from-gold to-gold-muted text-forest rounded-xl font-extrabold text-xs tracking-widest uppercase transition-all duration-300 shadow-gold-sm hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                      {saveSuccess === 'facility' ? 'UPDATED SYSTEM!' : 'SAVE PROFILE'}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* --- SECTION 2: VENUE MANAGEMENT (super_admin) --- */}
+              {activeTab === 'venues' && isSuperAdmin && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="font-display font-black text-2xl text-white uppercase italic tracking-tight">Arena Tiers</h2>
+                    <p className="text-white/40 text-xs mt-0.5">Edit hourly rental rates and availability groups.</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    {venues.map(venue => (
+                      <div key={venue.id} className="bg-white/5 border border-white/10 p-6 rounded-2xl flex flex-col justify-between hover:border-white/20 transition-all">
+                        <div>
+                          <div className="flex justify-between items-start mb-4">
+                            <span className="text-[9px] font-black tracking-widest px-2.5 py-1 bg-gold/10 text-gold border border-gold/20 rounded-lg uppercase font-mono">
+                              {venue.type === 'turf' ? 'Turf' : 'Meeting Room'}
+                            </span>
+                          </div>
+                          <h3 className="font-display font-bold text-lg text-white uppercase">{venue.name}</h3>
                         </div>
-                        <p className="font-display font-black text-forest text-xs tracking-tight">
-                          {value ? `KES ${Number(value).toLocaleString()}` : <span className="text-forest/30 italic text-[10px]">Not set</span>}
-                        </p>
+                        
+                        <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-white/5 text-xs text-white/60">
+                          <div>
+                            <span className="text-[9px] text-white/30 block uppercase tracking-wider">Morning</span>
+                            <span className="font-mono font-bold text-white">KES {Number(venue.hourly_rates?.morning || 0).toLocaleString()}</span>
+                          </div>
+                          <div>
+                            <span className="text-[9px] text-white/30 block uppercase tracking-wider">Off-Peak</span>
+                            <span className="font-mono font-bold text-white">KES {Number(venue.hourly_rates?.off_peak || 0).toLocaleString()}</span>
+                          </div>
+                          <div className="mt-2">
+                            <span className="text-[9px] text-white/30 block uppercase tracking-wider">Peak</span>
+                            <span className="font-mono font-bold text-white">KES {Number(venue.hourly_rates?.peak || 0).toLocaleString()}</span>
+                          </div>
+                          <div className="mt-2">
+                            <span className="text-[9px] text-white/30 block uppercase tracking-wider">Weekend</span>
+                            <span className="font-mono font-bold text-white">KES {Number(venue.hourly_rates?.weekend || 0).toLocaleString()}</span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => openEditVenue(venue)}
+                          className="mt-6 w-full text-center py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-black tracking-widest uppercase transition-all flex items-center justify-center gap-2"
+                        >
+                          <Edit2 className="w-3.5 h-3.5 text-gold" /> Edit Rates
+                        </button>
                       </div>
                     ))}
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </section>
+              )}
 
-        {/* ── Business Information ── */}
-        <section>
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 bg-gold/10 rounded-2xl flex items-center justify-center border border-gold/20">
-              <Building2 className="w-5 h-5 text-gold" />
-            </div>
-            <div>
-              <h2 className="font-display font-bold text-xl text-forest tracking-tight">Business Information</h2>
-              <p className="text-xs text-charcoal-light font-medium">Arena contact details and operating hours</p>
-            </div>
-          </div>
+              {/* --- SECTION 3: BOOKING RULES (super_admin) --- */}
+              {activeTab === 'booking' && isSuperAdmin && (
+                <form onSubmit={handleSaveBookingSettings} className="space-y-6">
+                  <div>
+                    <h2 className="font-display font-black text-2xl text-white uppercase italic tracking-tight">Booking Constraints</h2>
+                    <p className="text-white/40 text-xs mt-0.5">Control deposit values, windows, and cancellation rules.</p>
+                  </div>
 
-          <div className="relative group overflow-hidden">
-            <div className="absolute -inset-1 bg-gradient-to-r from-gold/15 to-transparent rounded-[2.2rem] blur opacity-20" />
-            <div className="relative bg-white/70 backdrop-blur-md border border-white/20 p-8 rounded-[2rem] shadow-xl">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-
-                {/* Contact */}
-                <div className="space-y-4">
-                  <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-forest/50 mb-3 flex items-center gap-2">
-                    <Phone className="w-3.5 h-3.5" /> Contact
-                  </h3>
-                  {[
-                    { label: 'WhatsApp / Bookings', value: BUSINESS_INFO.whatsapp },
-                    { label: 'Arena Line', value: BUSINESS_INFO.arena },
-                    { label: 'Academy Line', value: BUSINESS_INFO.academy },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="flex items-center justify-between py-3 border-b border-forest/5">
-                      <span className="text-xs font-bold text-charcoal-light uppercase tracking-wider">{label}</span>
-                      <span className="font-bold text-forest">{value}</span>
+                  <div className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="text-left">
+                        <span className="text-sm font-bold text-white block">Enforce Upfront Deposit</span>
+                        <span className="text-xs text-white/45">Mandatory deposit verification required for public client bookings.</span>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={depositEnforced}
+                          onChange={(e) => setDepositEnforced(e.target.checked)}
+                          className="sr-only peer cursor-pointer"
+                        />
+                        <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-forest" />
+                      </label>
                     </div>
-                  ))}
-                  <div className="flex items-center justify-between py-3 border-b border-forest/5">
-                    <span className="text-xs font-bold text-charcoal-light uppercase tracking-wider flex items-center gap-1.5"><Mail className="w-3.5 h-3.5" /> Email</span>
-                    <span className="font-bold text-forest">{BUSINESS_INFO.email}</span>
                   </div>
-                  <div className="flex items-center justify-between py-3">
-                    <span className="text-xs font-bold text-charcoal-light uppercase tracking-wider flex items-center gap-1.5"><Globe className="w-3.5 h-3.5" /> Website</span>
-                    <span className="font-bold text-forest">{BUSINESS_INFO.website}</span>
-                  </div>
-                </div>
 
-                {/* Hours */}
-                <div className="space-y-4">
-                  <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-forest/50 mb-3 flex items-center gap-2">
-                    <Clock className="w-3.5 h-3.5" /> Operating Hours
-                  </h3>
-                  {[
-                    { label: 'Mon – Fri', value: BUSINESS_INFO.hours.weekdays },
-                    { label: 'Sat – Sun', value: BUSINESS_INFO.hours.weekends },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="flex items-center justify-between py-3 border-b border-forest/5">
-                      <span className="text-xs font-bold text-charcoal-light uppercase tracking-wider">{label}</span>
-                      <span className="font-bold text-forest">{value}</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Deposit Value</label>
+                      <input
+                        type="number"
+                        required
+                        value={depositValue}
+                        onChange={(e) => setDepositValue(Number(e.target.value))}
+                        className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-mono font-bold"
+                      />
                     </div>
-                  ))}
-
-                  {/* Tagline */}
-                  <div className="mt-6 p-5 bg-forest rounded-2xl text-white">
-                    <p className="text-[9px] font-black uppercase tracking-[0.25em] text-white/50 mb-2">Arena Tagline</p>
-                    <p className="font-display font-black text-lg italic leading-tight">&ldquo;{BUSINESS_INFO.tagline}&rdquo;</p>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Deposit Value Type</label>
+                      <select
+                        value={depositType}
+                        onChange={(e) => setDepositType(e.target.value as any)}
+                        className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-bold"
+                      >
+                        <option value="percentage" className="bg-charcoal text-white">Percentage (%)</option>
+                        <option value="fixed" className="bg-charcoal text-white">Fixed Amount (KES)</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Default Slot Duration (mins)</label>
+                      <input
+                        type="number"
+                        required
+                        value={slotDuration}
+                        onChange={(e) => setSlotDuration(Number(e.target.value))}
+                        className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-mono font-bold"
+                      />
+                    </div>
                   </div>
-                </div>
-              </div>
 
-              <div className="mt-6 pt-6 border-t border-forest/10 flex items-center gap-3">
-                <div className="w-8 h-8 bg-gold/10 rounded-xl flex items-center justify-center">
-                  <Settings className="w-4 h-4 text-gold" />
-                </div>
-                <p className="text-xs text-charcoal-light font-medium">
-                  To update contact details or operating hours, edit the <code className="text-xs bg-forest/5 px-1 py-0.5 rounded font-mono text-forest">BUSINESS_INFO</code> constant in{' '}
-                  <code className="text-xs bg-forest/5 px-1 py-0.5 rounded font-mono text-forest">src/app/(authenticated)/settings/page.tsx</code>
-                  , then redeploy.
-                </p>
-              </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Booking Window Lead Days</label>
+                    <input
+                      type="number"
+                      required
+                      value={bookingWindowDays}
+                      onChange={(e) => setBookingWindowDays(Number(e.target.value))}
+                      className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-mono font-bold"
+                    />
+                    <p className="text-[10px] text-white/30">Number of calendar days ahead that clients are allowed to place reservations.</p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Cancellation & Refund Policy</label>
+                    <textarea
+                      required
+                      rows={4}
+                      value={cancellationPolicy}
+                      onChange={(e) => setCancellationPolicy(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-medium resize-none leading-relaxed"
+                    />
+                  </div>
+
+                  <div className="pt-6 border-t border-white/5 flex justify-between items-center gap-4">
+                    <p className="text-[9px] text-white/30 font-bold uppercase tracking-widest font-mono">
+                      Database: site_content.booking_settings
+                    </p>
+                    <button
+                      type="submit"
+                      disabled={isSaving}
+                      className="px-8 py-3.5 bg-gradient-to-r from-gold to-gold-muted text-forest rounded-xl font-extrabold text-xs tracking-widest uppercase transition-all duration-300 shadow-gold-sm hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                      {saveSuccess === 'booking' ? 'UPDATED SYSTEM!' : 'SAVE BOOKING RULES'}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* --- SECTION 4: NOTIFICATION SETTINGS (super_admin & admin) --- */}
+              {activeTab === 'notification' && isAdmin && (
+                <form onSubmit={handleSaveNotificationSettings} className="space-y-6">
+                  <div>
+                    <h2 className="font-display font-black text-2xl text-white uppercase italic tracking-tight">Outbound Comms</h2>
+                    <p className="text-white/40 text-xs mt-0.5">Configure SMS gateway parameters and automated transactional notifications.</p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-gold uppercase tracking-wider">SMS Sender ID</label>
+                    <input
+                      type="text"
+                      required
+                      value={smsSender}
+                      onChange={(e) => setSmsSender(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-bold"
+                    />
+                    <p className="text-[10px] text-white/30">Your registered SMS header identifier (e.g. MVSA).</p>
+                  </div>
+
+                  <div className="space-y-3 pt-2">
+                    <span className="text-[10px] font-bold text-gold uppercase tracking-wider block mb-2">Automated Triggers</span>
+                    
+                    {[
+                      { label: 'Booking Confirmation Alert', desc: 'Dispatch SMS receipt immediately when deposit or walk-in is logged.', state: autoSmsConfirmation, setter: setAutoSmsConfirmation },
+                      { label: 'Payment Receipt Alert', desc: 'Dispatch transactional SMS receipt when any ledger payment is recorded.', state: autoSmsPayment, setter: setAutoSmsPayment },
+                      { label: 'Balance Reminder Alert', desc: 'Dispatch automated reminder for pending balances before game slot.', state: autoSmsReminder, setter: setAutoSmsReminder },
+                    ].map((smsOpt, idx) => (
+                      <div key={idx} className="bg-white/[0.02] border border-white/5 p-4 rounded-xl flex items-center justify-between">
+                        <div className="text-left">
+                          <span className="text-xs font-bold text-white block">{smsOpt.label}</span>
+                          <span className="text-[10px] text-white/40">{smsOpt.desc}</span>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={smsOpt.state}
+                            onChange={(e) => smsOpt.setter(e.target.checked)}
+                            className="sr-only peer cursor-pointer"
+                          />
+                          <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-forest" />
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="space-y-1.5 pt-2">
+                    <label className="text-[10px] font-bold text-gold uppercase tracking-wider block">Reminder Lead Time (Hours)</label>
+                    <input
+                      type="number"
+                      required
+                      value={reminderLeadTime}
+                      onChange={(e) => setReminderLeadTime(Number(e.target.value))}
+                      className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-mono font-bold animate-in"
+                    />
+                    <p className="text-[10px] text-white/30">Number of hours before a scheduled time slot to send the automatic balance reminder.</p>
+                  </div>
+
+                  <div className="pt-6 border-t border-white/5 flex justify-between items-center gap-4">
+                    <p className="text-[9px] text-white/30 font-bold uppercase tracking-widest font-mono">
+                      Database: site_content.notification_settings
+                    </p>
+                    <button
+                      type="submit"
+                      disabled={isSaving}
+                      className="px-8 py-3.5 bg-gradient-to-r from-gold to-gold-muted text-forest rounded-xl font-extrabold text-xs tracking-widest uppercase transition-all duration-300 shadow-gold-sm hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                      {saveSuccess === 'notification' ? 'UPDATED SYSTEM!' : 'SAVE NOTIFICATION RULES'}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* --- SECTION 5: APPEARANCE (super_admin) --- */}
+              {activeTab === 'appearance' && isSuperAdmin && (
+                <form onSubmit={handleSaveAppearance} className="space-y-6">
+                  <div>
+                    <h2 className="font-display font-black text-2xl text-white uppercase italic tracking-tight">Branding & Assets</h2>
+                    <p className="text-white/40 text-xs mt-0.5">Configure light/dark configurations and visual asset URLs.</p>
+                  </div>
+
+                  <div className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="text-left">
+                        <span className="text-sm font-bold text-white block">Enforce Admin Dark Mode</span>
+                        <span className="text-xs text-white/45">Toggles between modern pitch charcoal theme and classical visual modes.</span>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={darkMode}
+                          onChange={(e) => setDarkMode(e.target.checked)}
+                          className="sr-only peer cursor-pointer"
+                        />
+                        <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-forest" />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-gold uppercase tracking-wider block">Official Facility Logo Asset URL</label>
+                    <input
+                      type="text"
+                      required
+                      value={logoUrl}
+                      onChange={(e) => setLogoUrl(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-mono font-bold"
+                    />
+                    <p className="text-[10px] text-white/30">Local asset path or external HTTPS link representing your vector/image logo.</p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-gold uppercase tracking-wider block">Public Landing Hero Background Image URL</label>
+                    <input
+                      type="text"
+                      required
+                      value={heroImageUrl}
+                      onChange={(e) => setHeroImageUrl(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-mono font-bold"
+                    />
+                    <p className="text-[10px] text-white/30">The central background image path displayed behind the main landing page hero.</p>
+                  </div>
+
+                  <div className="pt-6 border-t border-white/5 flex justify-between items-center gap-4">
+                    <p className="text-[9px] text-white/30 font-bold uppercase tracking-widest font-mono">
+                      Database: site_content.appearance_settings
+                    </p>
+                    <button
+                      type="submit"
+                      disabled={isSaving}
+                      className="px-8 py-3.5 bg-gradient-to-r from-gold to-gold-muted text-forest rounded-xl font-extrabold text-xs tracking-widest uppercase transition-all duration-300 shadow-gold-sm hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                      {saveSuccess === 'appearance' ? 'UPDATED BRAND!' : 'SAVE BRANDING'}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* --- SECTION 6: ACCOUNT SECURITY (all roles) --- */}
+              {activeTab === 'account' && (
+                <form onSubmit={handleSaveAccount} className="space-y-6">
+                  <div>
+                    <h2 className="font-display font-black text-2xl text-white uppercase italic tracking-tight">Security & Profile</h2>
+                    <p className="text-white/40 text-xs mt-0.5">Manage your dashboard display identity and update security credentials.</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-gold uppercase tracking-wider block">Full Display Name</label>
+                      <div className="relative">
+                        <User className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-white/30" />
+                        <input
+                          type="text"
+                          required
+                          value={accountName}
+                          onChange={(e) => setAccountName(e.target.value)}
+                          className="w-full pl-11 pr-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-bold"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-gold uppercase tracking-wider block">Current Assigned Role</label>
+                      <div className="relative">
+                        <ShieldCheck className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-white/30" />
+                        <input
+                          type="text"
+                          readOnly
+                          value={userRole.toUpperCase()}
+                          className="w-full pl-11 pr-4 py-3 border border-white/5 bg-white/[0.02] text-white/40 rounded-xl text-xs font-mono font-bold cursor-not-allowed uppercase"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t border-white/5 space-y-4">
+                    <span className="text-[10px] font-bold text-gold uppercase tracking-wider block">Update Security Password</span>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-white/40 uppercase tracking-wider block">New Secret Password</label>
+                        <div className="relative">
+                          <Lock className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-white/30" />
+                          <input
+                            type="password"
+                            placeholder="••••••••"
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            className="w-full pl-11 pr-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-mono font-bold animate-in"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-white/40 uppercase tracking-wider block">Confirm New Password</label>
+                        <div className="relative">
+                          <Lock className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-white/30" />
+                          <input
+                            type="password"
+                            placeholder="••••••••"
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            className="w-full pl-11 pr-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-mono font-bold animate-in"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-6 border-t border-white/5 flex justify-between items-center gap-4">
+                    <p className="text-[9px] text-white/30 font-bold uppercase tracking-widest font-mono">
+                      Scope: public.staff + Supabase Auth
+                    </p>
+                    <button
+                      type="submit"
+                      disabled={isSaving}
+                      className="px-8 py-3.5 bg-gradient-to-r from-gold to-gold-muted text-forest rounded-xl font-extrabold text-xs tracking-widest uppercase transition-all duration-300 shadow-gold-sm hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                      {saveSuccess === 'account' ? 'CREDENTIALS SAVED!' : 'UPDATE SECURITY PROFILE'}
+                    </button>
+                  </div>
+                </form>
+              )}
+
             </div>
           </div>
-        </section>
+        </div>
+      )}
 
-        {/* ── Mpesa Config Notice ── */}
-        <section>
-          <div className="relative overflow-hidden bg-forest rounded-[2rem] p-8 text-white shadow-xl shadow-forest/20">
-            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-5" />
-            <div className="relative z-10 flex items-start gap-5">
-              <div className="w-12 h-12 bg-gold/20 rounded-2xl flex items-center justify-center border border-gold/30 shrink-0 mt-1">
-                <DollarSign className="w-6 h-6 text-gold" />
-              </div>
-              <div>
-                <h3 className="font-display font-black text-xl italic tracking-tight mb-2">M-Pesa Integration</h3>
-                <p className="text-white/70 text-sm font-medium leading-relaxed">
-                  M-Pesa STK Push is configured via Supabase Edge Functions and environment variables. To update your Safaricom Daraja credentials, update the following variables in your Supabase project:
-                </p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {['MPESA_CONSUMER_KEY', 'MPESA_CONSUMER_SECRET', 'MPESA_SHORTCODE', 'MPESA_PASSKEY', 'MPESA_CALLBACK_URL'].map(v => (
-                    <code key={v} className="text-[11px] bg-white/10 border border-white/10 px-2.5 py-1 rounded-lg font-mono text-gold">
-                      {v}
-                    </code>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-
-      {/* Edit Venue Modal */}
-      {isEditOpen && editVenue && (
+      {/* --- SUBMODAL: EDIT VENUE RATE TIERS (Legacy Rates configuration) --- */}
+      {isEditVenueOpen && editVenue && (
         <div className="fixed inset-0 bg-charcoal/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-            <div className="p-8 border-b border-border-color flex justify-between items-center bg-forest text-white">
+          <div className="glass rounded-[2.5rem] w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 border border-white/10 bg-charcoal text-left">
+            <div className="p-8 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
               <div>
-                <h2 className="text-2xl font-display font-bold italic tracking-tight">EDIT VENUE</h2>
-                <p className="text-white/60 text-xs font-bold uppercase tracking-widest mt-1">Pricing & Name</p>
+                <h2 className="text-2xl font-display font-extrabold italic tracking-tight text-white uppercase">EDIT VENUE</h2>
+                <p className="text-gold text-[10px] font-black uppercase tracking-widest mt-1">Pricing & Name</p>
               </div>
-              <button onClick={() => setIsEditOpen(false)} className="p-2 hover:bg-white/10 rounded-xl transition-colors">
+              <button onClick={() => setIsEditVenueOpen(false)} className="p-2 hover:bg-white/10 rounded-xl transition-colors text-white">
                 <X className="w-6 h-6" />
               </button>
             </div>
+            
             <div className="p-8 space-y-6">
               <div className="space-y-2">
-                <label className="text-xs font-black uppercase tracking-widest text-muted">Venue Name</label>
+                <label className="text-xs font-black uppercase tracking-widest text-gold block">Venue Name</label>
                 <input
                   type="text"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-border-color bg-surface focus:outline-none focus:ring-2 focus:ring-gold/50 font-bold text-sm"
+                  value={editVenueName}
+                  onChange={(e) => setEditVenueName(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white focus:bg-white/10 focus:border-gold/30 focus:outline-none font-bold text-sm"
                 />
               </div>
 
               <div>
-                <p className="text-xs font-black uppercase tracking-widest text-muted mb-4">Hourly Rates (KES)</p>
+                <p className="text-xs font-black uppercase tracking-widest text-gold mb-4">Hourly Rates (KES)</p>
                 <div className="space-y-3">
                   {[
                     { key: 'morning' as const, label: 'Morning Rate', hint: 'Weekday 8:00 AM – 12:00 PM' },
@@ -343,18 +1096,18 @@ export default function SettingsPage() {
                     { key: 'peak' as const, label: 'Peak Rate', hint: 'Weekday evenings & weekend all-day' },
                     { key: 'weekend' as const, label: 'Weekend Rate (Legacy)', hint: 'Saturday & Sunday' },
                   ].map(({ key, label, hint }) => (
-                    <div key={key} className="flex items-center gap-4 p-4 bg-surface rounded-2xl border border-border-color">
+                    <div key={key} className="flex items-center gap-4 p-4 bg-white/5 rounded-2xl border border-white/10">
                       <div className="flex-1">
-                        <p className="text-sm font-bold text-forest">{label}</p>
+                        <p className="text-sm font-bold text-white">{label}</p>
                         <p className="text-[10px] text-charcoal-light">{hint}</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-charcoal-light">KES</span>
+                        <span className="text-xs font-bold text-gold">KES</span>
                         <input
                           type="number"
-                          value={editRates[key]}
-                          onChange={(e) => setEditRates({ ...editRates, [key]: Number(e.target.value) })}
-                          className="w-24 px-3 py-2 text-right rounded-xl border border-border-color bg-white focus:outline-none focus:ring-2 focus:ring-gold/50 font-display font-bold text-forest text-lg"
+                          value={editVenueRates[key]}
+                          onChange={(e) => setEditVenueRates({ ...editVenueRates, [key]: Number(e.target.value) })}
+                          className="w-24 px-3 py-2 text-right rounded-xl border border-white/10 bg-white/5 focus:bg-white/10 focus:border-gold/30 focus:outline-none font-display font-bold text-white text-lg"
                         />
                       </div>
                     </div>
@@ -363,22 +1116,24 @@ export default function SettingsPage() {
               </div>
 
               <button
+                type="button"
                 onClick={handleSaveVenue}
                 disabled={isSaving}
-                className="w-full flex items-center justify-center gap-3 bg-gold text-forest px-8 py-4 rounded-2xl font-bold text-sm tracking-[0.2em] uppercase transition-all shadow-xl shadow-gold/20 active:scale-95 disabled:opacity-50"
+                className="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-gold to-gold-muted text-forest px-8 py-4 rounded-2xl font-extrabold text-sm tracking-[0.15em] uppercase transition-all duration-300 hover:shadow-gold-md active:scale-95 disabled:opacity-50"
               >
                 {isSaving ? (
-                  <><Loader2 className="w-5 h-5 animate-spin" /> SAVING...</>
-                ) : saveSuccess ? (
-                  <><CheckCircle className="w-5 h-5" /> SAVED!</>
+                  <><Loader2 className="w-5 h-5 animate-spin text-forest" /> SAVING...</>
+                ) : saveSuccess === 'venues' ? (
+                  <><CheckCircle className="w-5 h-5 text-forest" /> SAVED RATES!</>
                 ) : (
-                  <><Save className="w-5 h-5" /> SAVE VENUE <ChevronRight className="w-5 h-5" /></>
+                  <><Save className="w-5 h-5 text-forest" /> SAVE VENUE <ChevronRight className="w-5 h-5 text-forest" /></>
                 )}
               </button>
             </div>
           </div>
         </div>
       )}
+
     </div>
   );
 }
