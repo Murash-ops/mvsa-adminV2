@@ -16,7 +16,9 @@ import {
   UserCircle,
   Trophy,
   MapPin,
-  MessageSquare
+  MessageSquare,
+  BarChart3,
+  Inbox
 } from 'lucide-react';
 
 export function Sidebar({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
@@ -27,30 +29,37 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean, onClose: () => v
     {
       title: 'Core',
       items: [
-        { name: 'Dashboard', icon: LayoutDashboard, href: '/', roles: ['super_admin', 'admin', 'boss', 'academy_coo', 'receptionist', 'coach', 'instructor'] },
+        { name: 'Dashboard', icon: LayoutDashboard, href: '/', roles: ['super_admin', 'admin', 'boss', 'academy_coo', 'receptionist'] },
+        { name: 'Reports', icon: BarChart3, href: '/reports', roles: ['super_admin', 'boss', 'academy_coo'] },
       ]
     },
     {
       title: 'Venue Management',
       items: [
-        { name: 'Bookings', icon: CalendarDays, href: '/bookings', roles: ['super_admin', 'admin', 'boss', 'receptionist'], streamScope: ['all', 'stream_1'] },
-        { name: 'Walk-ins', icon: ClipboardList, href: '/walkins', roles: ['super_admin', 'admin', 'boss', 'receptionist'], streamScope: ['all', 'stream_1'] },
+        { name: 'Bookings', icon: CalendarDays, href: '/bookings', roles: ['super_admin', 'receptionist'], streamScope: ['all', 'stream_1'] },
+        { name: 'Walk-ins', icon: ClipboardList, href: '/walkins', roles: ['super_admin', 'receptionist'], streamScope: ['all', 'stream_1'] },
         { name: 'Venues', icon: MapPin, href: '/venues', roles: ['super_admin'] },
       ]
     },
     {
       title: 'Academy Operations',
       items: [
-        { name: 'Academy Operations', icon: Trophy, href: '/academy-operations', roles: ['super_admin', 'admin', 'academy_coo'], streamScope: ['all', 'stream_2'] },
-        { name: 'Programs', icon: ShieldCheck, href: '/programs', roles: ['super_admin', 'admin', 'academy_coo'], streamScope: ['all', 'stream_2'] },
+        { name: 'Academy Operations', icon: Trophy, href: '/academy-operations', roles: ['super_admin', 'academy_coo'], streamScope: ['all', 'stream_2'] },
+        { name: 'Programs', icon: ShieldCheck, href: '/programs', roles: ['super_admin', 'academy_coo'], streamScope: ['all', 'stream_2'] },
         { name: 'Coach Portal', icon: Trophy, href: '/instructor', roles: ['super_admin', 'coach', 'instructor'] },
       ]
     },
     {
-      title: 'Finance & Comms',
+      title: 'CRM & Comms',
       items: [
-        { name: 'Expenses', icon: Receipt, href: '/expenses', roles: ['super_admin', 'admin', 'boss', 'academy_coo'], streamScope: ['all', 'stream_1', 'stream_2'] },
-        { name: 'SMS Alerts', icon: MessageSquare, href: '/notifications', roles: ['super_admin', 'admin', 'boss', 'academy_coo'] },
+        { name: 'SMS Alerts', icon: MessageSquare, href: '/notifications', roles: ['super_admin', 'academy_coo'] },
+        { name: 'Inquiries', icon: Inbox, href: '/inquiries', roles: ['super_admin'] },
+      ]
+    },
+    {
+      title: 'Finance',
+      items: [
+        { name: 'Expenses', icon: Receipt, href: '/expenses', roles: ['super_admin', 'boss', 'academy_coo'], streamScope: ['all', 'stream_1', 'stream_2'] },
       ]
     },
     {

@@ -16,9 +16,11 @@ import {
   Loader2,
   ChevronRight
 } from 'lucide-react';
+import { useAuth } from '@/components/AuthContext';
 
 export default function ExpensesPage() {
   const supabase = createClient();
+  const { staff } = useAuth();
   const [expenses, setExpenses] = useState<any[]>([]);
   const [programs, setPrograms] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -55,9 +57,11 @@ export default function ExpensesPage() {
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
 
   useEffect(() => {
-    fetchExpenses();
+    if (staff) {
+      fetchExpenses();
+    }
     fetchPrograms();
-  }, []);
+  }, [staff]);
 
   async function fetchPrograms() {
     const { data, error } = await supabase
@@ -71,14 +75,19 @@ export default function ExpensesPage() {
 
   async function fetchExpenses() {
     setIsLoading(true);
-    const { data, error } = await supabase
+    let query = supabase
       .from('expenses')
       .select(`
         *,
         logged_by_staff:logged_by (name),
         programs (name)
-      `)
-      .order('created_at', { ascending: false });
+      `);
+
+    if (staff?.role === 'academy_coo') {
+      query = query.eq('is_academy', true);
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
 
     if (!error && data) {
       setExpenses(data);
@@ -422,50 +431,54 @@ export default function ExpensesPage() {
                         {expense.logged_by_staff?.name || 'Unknown'}
                       </td>
                       <td className="px-8 py-6 text-right">
-                        <div className="relative inline-block text-left">
-                          <button 
-                            onClick={() => setActiveMenuExpenseId(activeMenuExpenseId === expense.id ? null : expense.id)}
-                            className="p-2.5 hover:bg-white/5 rounded-xl transition-all relative"
-                          >
-                            <MoreVertical className="w-4 h-4 text-white/40 hover:text-white" />
-                          </button>
-                          
-                          {activeMenuExpenseId === expense.id && (
-                            <>
-                              <div 
-                                className="fixed inset-0 z-40 bg-transparent" 
-                                onClick={() => setActiveMenuExpenseId(null)}
-                              />
-                              <div className="absolute right-0 mt-2 w-48 rounded-2xl bg-charcoal border border-white/10 shadow-2xl z-50 overflow-hidden divide-y divide-white/5 py-1 text-left animate-in fade-in slide-in-from-top-2 duration-200">
-                                <button
-                                  onClick={() => {
-                                    setSelectedExpense(expense);
-                                    setEditFormData({
-                                      id: expense.id,
-                                      category: expense.category,
-                                      amount: expense.amount.toString(),
-                                      description: expense.description,
-                                      date: format(new Date(expense.created_at), 'yyyy-MM-dd'),
-                                      is_academy: expense.is_academy,
-                                      program_id: expense.program_id?.toString() || ''
-                                    });
-                                    setIsEditModalOpen(true);
-                                    setActiveMenuExpenseId(null);
-                                  }}
-                                  className="w-full px-4 py-2.5 text-xs font-bold text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-3 transition-colors"
-                                >
-                                  Edit Expense
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteExpense(expense)}
-                                  className="w-full px-4 py-2.5 text-xs font-bold text-red-400 hover:text-red-300 hover:bg-red-500/10 flex items-center gap-3 transition-colors"
-                                >
-                                  Delete Expense
-                                </button>
-                              </div>
-                            </>
-                          )}
-                        </div>
+                        {staff?.role !== 'boss' ? (
+                          <div className="relative inline-block text-left">
+                            <button 
+                              onClick={() => setActiveMenuExpenseId(activeMenuExpenseId === expense.id ? null : expense.id)}
+                              className="p-2.5 hover:bg-white/5 rounded-xl transition-all relative"
+                            >
+                              <MoreVertical className="w-4 h-4 text-white/40 hover:text-white" />
+                            </button>
+                            
+                            {activeMenuExpenseId === expense.id && (
+                              <>
+                                <div 
+                                  className="fixed inset-0 z-40 bg-transparent" 
+                                  onClick={() => setActiveMenuExpenseId(null)}
+                                />
+                                <div className="absolute right-0 mt-2 w-48 rounded-2xl bg-charcoal border border-white/10 shadow-2xl z-50 overflow-hidden divide-y divide-white/5 py-1 text-left animate-in fade-in slide-in-from-top-2 duration-200">
+                                  <button
+                                    onClick={() => {
+                                      setSelectedExpense(expense);
+                                      setEditFormData({
+                                        id: expense.id,
+                                        category: expense.category,
+                                        amount: expense.amount.toString(),
+                                        description: expense.description,
+                                        date: format(new Date(expense.created_at), 'yyyy-MM-dd'),
+                                        is_academy: expense.is_academy,
+                                        program_id: expense.program_id?.toString() || ''
+                                      });
+                                      setIsEditModalOpen(true);
+                                      setActiveMenuExpenseId(null);
+                                    }}
+                                    className="w-full px-4 py-2.5 text-xs font-bold text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-3 transition-colors"
+                                  >
+                                    Edit Expense
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteExpense(expense)}
+                                    className="w-full px-4 py-2.5 text-xs font-bold text-red-400 hover:text-red-300 hover:bg-red-500/10 flex items-center gap-3 transition-colors"
+                                  >
+                                    Delete Expense
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-[10px] font-bold text-white/20 uppercase tracking-widest select-none pr-4">Log Only</span>
+                        )}
                       </td>
                     </tr>
                   ))

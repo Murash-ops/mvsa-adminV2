@@ -18,30 +18,45 @@ import {
   Crown,
   Trophy,
   Activity,
-  ArrowRight
+  ArrowRight,
+  Briefcase,
+  ClipboardList,
+  Headphones
 } from 'lucide-react';
 
 type Staff = {
   id: string;
   name: string;
   email: string;
-  role: 'super_admin' | 'admin' | 'coach';
+  role: 'super_admin' | 'boss' | 'academy_coo' | 'receptionist' | 'coach';
   stream_scope: 'all' | 'stream_1' | 'stream_2';
   created_at: string;
 };
 
-const roleConfig = {
+const roleConfig: Record<string, { label: string; icon: any; style: string; description: string }> = {
   super_admin: {
     label: 'Super Admin',
     icon: Crown,
     style: 'bg-gold/10 text-gold border border-gold/20',
     description: 'Complete global system access and revenue oversight',
   },
-  admin: {
-    label: 'Administrator',
-    icon: ShieldCheck,
-    style: 'bg-green-500/10 text-green-400 border border-green-500/20',
-    description: 'General administrative operations or specific stream oversight',
+  boss: {
+    label: 'Boss',
+    icon: Briefcase,
+    style: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20',
+    description: 'Full revenue and P&L visibility, log-only expense actions',
+  },
+  academy_coo: {
+    label: 'Academy COO',
+    icon: ClipboardList,
+    style: 'bg-purple-500/10 text-purple-400 border border-purple-500/20',
+    description: 'Academy operations, enrollments, Stream 2 expenses',
+  },
+  receptionist: {
+    label: 'Receptionist',
+    icon: Headphones,
+    style: 'bg-sky-500/10 text-sky-400 border border-sky-500/20',
+    description: 'Bookings desk, walk-in logging, deposit-enforced transactions',
   },
   coach: {
     label: 'Academy Coach',
@@ -77,10 +92,10 @@ export default function StaffPage() {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Staff | null>(null);
-  const [newRole, setNewRole] = useState<Staff['role']>('admin');
+  const [newRole, setNewRole] = useState<Staff['role']>('receptionist');
   const [newScope, setNewScope] = useState<Staff['stream_scope']>('all');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [inviteForm, setInviteForm] = useState({ name: '', email: '', password: '', role: 'admin' as Staff['role'], scope: 'all' as Staff['stream_scope'] });
+  const [inviteForm, setInviteForm] = useState({ name: '', email: '', password: '', role: 'receptionist' as Staff['role'], scope: 'all' as Staff['stream_scope'] });
   const [inviteResult, setInviteResult] = useState<{ tempPassword?: string; email?: string } | null>(null);
 
   const fetchStaff = async () => {
@@ -122,7 +137,7 @@ export default function StaffPage() {
         email: inviteForm.email,
         tempPassword: data.tempPassword
       });
-      setInviteForm({ name: '', email: '', password: '', role: 'admin', scope: 'all' });
+      setInviteForm({ name: '', email: '', password: '', role: 'receptionist', scope: 'all' });
       fetchStaff();
     } catch (err: any) {
       alert(err.message || 'An error occurred.');
@@ -163,7 +178,9 @@ export default function StaffPage() {
   const stats = {
     total: staffList.length,
     superAdmins: staffList.filter(s => s.role === 'super_admin').length,
-    admins: staffList.filter(s => s.role === 'admin').length,
+    bosses: staffList.filter(s => s.role === 'boss').length,
+    coos: staffList.filter(s => s.role === 'academy_coo').length,
+    receptionists: staffList.filter(s => s.role === 'receptionist').length,
     coaches: staffList.filter(s => s.role === 'coach').length,
   };
 
@@ -198,7 +215,9 @@ export default function StaffPage() {
         {[
           { label: 'Total staff', value: stats.total, icon: Users, color: 'text-gold', bg: 'bg-white/5', border: 'border-white/10' },
           { label: 'Super Admins', value: stats.superAdmins, icon: Crown, color: 'text-yellow-400', bg: 'bg-yellow-400/10', border: 'border-yellow-400/20' },
-          { label: 'Administrators', value: stats.admins, icon: ShieldCheck, color: 'text-green-400', bg: 'bg-green-500/10', border: 'border-green-500/20' },
+          { label: 'Boss / Proprietor', value: stats.bosses, icon: Briefcase, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20' },
+          { label: 'Academy COO', value: stats.coos, icon: ClipboardList, color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/20' },
+          { label: 'Receptionists', value: stats.receptionists, icon: Headphones, color: 'text-sky-400', bg: 'bg-sky-500/10', border: 'border-sky-500/20' },
           { label: 'Academy Coaches', value: stats.coaches, icon: Trophy, color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
         ].map(({ label, value, icon: Icon, color, bg, border }) => (
           <div key={label} className="glass p-6 rounded-3xl shadow-pitch hover:border-white/10 transition-all">
@@ -341,7 +360,7 @@ export default function StaffPage() {
               {/* Section 1: Choose Role */}
               <div className="space-y-3">
                 <h3 className="text-xs font-black uppercase tracking-widest text-gold mb-2">1. Select Staff Role</h3>
-                {(['admin', 'coach'] as const).map((role) => {
+                {(['boss', 'academy_coo', 'receptionist', 'coach'] as const).map((role) => {
                   const cfg = roleConfig[role];
                   const Icon = cfg.icon;
                   return (
@@ -515,7 +534,9 @@ export default function StaffPage() {
                         className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white focus:bg-white/10 focus:border-gold/30 focus:outline-none font-bold text-sm appearance-none bg-forest-dark"
                       >
                         <option value="super_admin">Super Admin</option>
-                        <option value="admin">Administrator</option>
+                        <option value="boss">Boss</option>
+                        <option value="academy_coo">Academy COO</option>
+                        <option value="receptionist">Receptionist</option>
                         <option value="coach">Coach</option>
                       </select>
                       <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-white/50">

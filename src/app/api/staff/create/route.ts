@@ -30,8 +30,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required staff fields.' }, { status: 400 });
     }
 
-    // Aligned strictly to: super_admin, admin, coach
-    if (!['super_admin', 'admin', 'coach'].includes(role)) {
+    // Aligned strictly to database CHECK constraint: super_admin, boss, academy_coo, receptionist, coach
+    if (!['super_admin', 'boss', 'academy_coo', 'receptionist', 'coach'].includes(role)) {
       return NextResponse.json({ error: 'Invalid staff role specified.' }, { status: 400 });
     }
 

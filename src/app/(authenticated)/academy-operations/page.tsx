@@ -102,6 +102,131 @@ export default function AcademyOperations() {
   const [editedPhotoPreview, setEditedPhotoPreview] = useState('');
   const [editedPhotoUploading, setEditedPhotoUploading] = useState(false);
 
+  // Manual Enrollment Form States (COO Only Creator)
+  const [isNewEnrollmentOpen, setIsNewEnrollmentOpen] = useState(false);
+  const [newEnrollmentStep, setNewEnrollmentStep] = useState(1);
+  const [newEnrollmentData, setNewEnrollmentData] = useState({
+    participant_name: '',
+    participant_age: '',
+    gender: 'Male',
+    prior_experience: 'Beginner',
+    school_club: '',
+    medical_conditions: '',
+    parent_name: '',
+    client_phone: '',
+    communication_pref: 'whatsapp',
+    program_id: '',
+    pricing_plan: 'session',
+    status: 'active',
+    payment_status: 'pending'
+  });
+  const [newEnrollmentPhotoFile, setNewEnrollmentPhotoFile] = useState<File | null>(null);
+  const [newEnrollmentPhotoPreview, setNewEnrollmentPhotoPreview] = useState('');
+
+  const handleNewEnrollmentPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setNewEnrollmentPhotoFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setNewEnrollmentPhotoPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const submitNewEnrollment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newEnrollmentData.participant_name || !newEnrollmentData.parent_name || !newEnrollmentData.client_phone || !newEnrollmentData.program_id) {
+      alert('Please fill out all required fields');
+      return;
+    }
+    setIsSubmitting(true);
+
+    try {
+      let photoUrl = '';
+
+      // 1. Upload photo if present
+      if (newEnrollmentPhotoFile) {
+        const fileExt = newEnrollmentPhotoFile.name.split('.').pop();
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
+        const filePath = `profiles/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('player-profiles')
+          .upload(filePath, newEnrollmentPhotoFile);
+
+        if (uploadError) {
+          // fallback to general bucket if player-profiles fails
+          const { error: fallbackError } = await supabase.storage
+            .from('player-profiles')
+            .upload(`receipts/${fileName}`, newEnrollmentPhotoFile);
+          if (fallbackError) throw uploadError;
+          const { data: { publicUrl } } = supabase.storage
+            .from('player-profiles')
+            .getPublicUrl(`receipts/${fileName}`);
+          photoUrl = publicUrl;
+        } else {
+          const { data: { publicUrl } } = supabase.storage
+            .from('player-profiles')
+            .getPublicUrl(filePath);
+          photoUrl = publicUrl;
+        }
+      }
+
+      // 2. Insert into public.enrollments
+      const { error } = await supabase
+        .from('enrollments')
+        .insert([{
+          participant_name: newEnrollmentData.participant_name,
+          participant_age: parseInt(newEnrollmentData.participant_age) || null,
+          gender: newEnrollmentData.gender,
+          client_phone: newEnrollmentData.client_phone,
+          parent_name: newEnrollmentData.parent_name,
+          communication_pref: newEnrollmentData.communication_pref,
+          prior_experience: newEnrollmentData.prior_experience,
+          school_club: newEnrollmentData.school_club || null,
+          medical_conditions: newEnrollmentData.medical_conditions || null,
+          pricing_plan: newEnrollmentData.pricing_plan,
+          status: newEnrollmentData.status,
+          payment_status: newEnrollmentData.payment_status,
+          passport_photo_url: photoUrl || null,
+          program_id: parseInt(newEnrollmentData.program_id)
+        }]);
+
+      if (error) throw error;
+
+      alert('Student enrollment successfully registered!');
+      setIsNewEnrollmentOpen(false);
+      
+      // Reset form
+      setNewEnrollmentStep(1);
+      setNewEnrollmentData({
+        participant_name: '',
+        participant_age: '',
+        gender: 'Male',
+        prior_experience: 'Beginner',
+        school_club: '',
+        medical_conditions: '',
+        parent_name: '',
+        client_phone: '',
+        communication_pref: 'whatsapp',
+        program_id: '',
+        pricing_plan: 'session',
+        status: 'active',
+        payment_status: 'pending'
+      });
+      setNewEnrollmentPhotoFile(null);
+      setNewEnrollmentPhotoPreview('');
+
+      refreshData();
+    } catch (err: any) {
+      alert(err.message || 'Error creating manual enrollment');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   useEffect(() => {
     fetchInitialData();
   }, []);
@@ -174,7 +299,7 @@ export default function AcademyOperations() {
     const matchesProgram = selectedProgramId === 'all' || e.program_id.toString() === selectedProgramId;
     const matchesStatus = rosterStatusFilter === 'all' || e.status === rosterStatusFilter;
     const matchesSearch = e.participant_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          e.parent_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          (e.parent_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
                           e.client_phone.includes(searchQuery);
     return matchesProgram && matchesStatus && matchesSearch;
   });
@@ -589,13 +714,29 @@ export default function AcademyOperations() {
             <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gold font-bold">▼</div>
           </div>
 
-          <button
-            onClick={() => setIsExpenseOpen(true)}
-            className="px-6 py-3.5 rounded-2xl bg-gold hover:bg-white text-forest font-black border border-gold hover:border-white transition-all text-sm uppercase tracking-wider shadow-gold-sm flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4 shrink-0" />
-            Log Academy Cost
-          </button>
+          <div className="flex gap-4">
+            {(staff?.role === 'academy_coo' || staff?.role === 'super_admin') && (
+              <button
+                onClick={() => {
+                  const defaultProg = programs.length > 0 ? programs[0].id.toString() : '';
+                  setNewEnrollmentData(prev => ({ ...prev, program_id: defaultProg }));
+                  setIsNewEnrollmentOpen(true);
+                }}
+                className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-gold to-gold-muted hover:from-white hover:to-white text-forest font-black transition-all text-sm uppercase tracking-wider shadow-gold-sm flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4 shrink-0" />
+                New Enrollment
+              </button>
+            )}
+
+            <button
+              onClick={() => setIsExpenseOpen(true)}
+              className="px-6 py-3.5 rounded-2xl bg-gold hover:bg-white text-forest font-black border border-gold hover:border-white transition-all text-sm uppercase tracking-wider shadow-gold-sm flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4 shrink-0" />
+              Log Academy Cost
+            </button>
+          </div>
         </div>
       </header>
 
@@ -844,10 +985,12 @@ export default function AcademyOperations() {
                 onChange={(e) => setRosterStatusFilter(e.target.value)}
                 className="px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white font-bold border border-white/10 focus:border-gold/30 transition-all text-xs appearance-none pr-10 focus:outline-none uppercase tracking-wider"
               >
+                <option value="all" className="bg-forest-dark text-white">All Records</option>
+                <option value="pending" className="bg-forest-dark text-white">Pending Roster</option>
                 <option value="active" className="bg-forest-dark text-white">Active Roster</option>
+                <option value="inactive" className="bg-forest-dark text-white">Inactive Roster</option>
                 <option value="completed" className="bg-forest-dark text-white">Completed / Archived</option>
                 <option value="cancelled" className="bg-forest-dark text-white">Cancelled Only</option>
-                <option value="all" className="bg-forest-dark text-white">All Records</option>
               </select>
               <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gold text-xs">▼</div>
             </div>
@@ -1083,6 +1226,309 @@ export default function AcademyOperations() {
                 <p className="text-[9px] text-center text-white/30 font-bold uppercase tracking-wider mt-4">
                   Approving this logs the offline transaction and propagates stats to real-time sync ledgers instantly.
                 </p>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* New Student Enrollment Drawer */}
+      {isNewEnrollmentOpen && (
+        <div className="fixed inset-0 bg-charcoal/70 backdrop-blur-sm z-[100] flex justify-end animate-in fade-in duration-300">
+          <div className="glass w-full max-w-md h-full shadow-2xl animate-in slide-in-from-right duration-300 flex flex-col border-l border-white/10 bg-[#16181d]/90 overflow-y-auto">
+            
+            <div className="p-8 border-b border-white/5 flex justify-between items-center bg-white/[0.02] sticky top-0 z-10">
+              <div>
+                <span className="text-[9px] font-black uppercase tracking-widest text-gold font-display">Roster Operations</span>
+                <h3 className="text-xl font-display font-black text-white italic uppercase tracking-tight mt-0.5">
+                  New Student Enrollment
+                </h3>
+              </div>
+              <button 
+                onClick={() => setIsNewEnrollmentOpen(false)}
+                className="p-2.5 hover:bg-white/10 rounded-xl transition-colors border border-white/10 text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Steps Indicator */}
+            <div className="px-8 pt-6 pb-2">
+              <div className="flex items-center justify-between">
+                {[1, 2, 3].map(stepNum => (
+                  <button
+                    key={stepNum}
+                    type="button"
+                    onClick={() => {
+                      if (stepNum < newEnrollmentStep) {
+                        setNewEnrollmentStep(stepNum);
+                      }
+                    }}
+                    className="flex flex-col items-center gap-1 flex-1 relative group"
+                    disabled={stepNum > newEnrollmentStep}
+                  >
+                    <div className={`w-8 h-8 rounded-full border flex items-center justify-center font-bold text-xs transition-all ${
+                      newEnrollmentStep === stepNum 
+                        ? 'border-gold bg-gold text-forest font-black shadow-gold-sm' 
+                        : newEnrollmentStep > stepNum
+                          ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
+                          : 'border-white/10 bg-white/5 text-white/30'
+                    }`}>
+                      {stepNum}
+                    </div>
+                    <span className={`text-[8px] font-black uppercase tracking-wider ${
+                      newEnrollmentStep === stepNum ? 'text-gold' : 'text-white/40'
+                    }`}>
+                      {stepNum === 1 ? 'Student' : stepNum === 2 ? 'Parent' : 'Settings'}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <form onSubmit={submitNewEnrollment} className="p-8 space-y-6 flex-1 flex flex-col justify-between">
+              <div className="space-y-6">
+                {/* STEP 1: Student Information */}
+                {newEnrollmentStep === 1 && (
+                  <div className="space-y-4 animate-in fade-in duration-200">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-gold block">Player / Athlete Name *</label>
+                      <input
+                        type="text"
+                        value={newEnrollmentData.participant_name}
+                        onChange={(e) => setNewEnrollmentData({ ...newEnrollmentData, participant_name: e.target.value })}
+                        required
+                        placeholder="Enter full name..."
+                        className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white font-bold text-sm focus:outline-none focus:border-gold/30"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-gold block">Age</label>
+                        <input
+                          type="number"
+                          value={newEnrollmentData.participant_age}
+                          onChange={(e) => setNewEnrollmentData({ ...newEnrollmentData, participant_age: e.target.value })}
+                          placeholder="e.g. 12"
+                          className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white font-bold text-sm focus:outline-none focus:border-gold/30"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-gold block">Gender</label>
+                        <select
+                          value={newEnrollmentData.gender}
+                          onChange={(e) => setNewEnrollmentData({ ...newEnrollmentData, gender: e.target.value })}
+                          className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white font-bold text-sm focus:outline-none focus:border-gold/30"
+                        >
+                          <option value="Male" className="bg-forest text-white">Male</option>
+                          <option value="Female" className="bg-forest text-white">Female</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-gold block">Experience Level</label>
+                      <select
+                        value={newEnrollmentData.prior_experience}
+                        onChange={(e) => setNewEnrollmentData({ ...newEnrollmentData, prior_experience: e.target.value })}
+                        className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white font-bold text-sm focus:outline-none focus:border-gold/30"
+                      >
+                        <option value="Beginner" className="bg-forest text-white">Beginner</option>
+                        <option value="Intermediate" className="bg-forest text-white">Intermediate</option>
+                        <option value="Advanced" className="bg-forest text-white">Advanced / Elite</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-gold block">School or Club</label>
+                      <input
+                        type="text"
+                        value={newEnrollmentData.school_club}
+                        onChange={(e) => setNewEnrollmentData({ ...newEnrollmentData, school_club: e.target.value })}
+                        placeholder="e.g. Hillcrest School"
+                        className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white font-bold text-sm focus:outline-none focus:border-gold/30"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-gold block">Medical Conditions & Allergies</label>
+                      <textarea
+                        value={newEnrollmentData.medical_conditions}
+                        onChange={(e) => setNewEnrollmentData({ ...newEnrollmentData, medical_conditions: e.target.value })}
+                        rows={2}
+                        placeholder="Describe any allergies or conditions..."
+                        className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white font-medium text-sm focus:outline-none resize-none"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-gold block">Athlete Photo (Optional)</label>
+                      <div className="flex items-center gap-4 bg-white/[0.02] p-4 rounded-2xl border border-white/5">
+                        <div className="relative w-16 h-16 rounded-xl bg-white/5 border border-white/10 overflow-hidden flex items-center justify-center shrink-0">
+                          {newEnrollmentPhotoPreview ? (
+                            <img src={newEnrollmentPhotoPreview} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <Camera className="w-6 h-6 text-white/20" />
+                          )}
+                        </div>
+                        <label className="flex-1 py-3 px-4 rounded-xl border border-dashed border-white/20 hover:border-gold text-white/60 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest text-center cursor-pointer">
+                          Upload Photo
+                          <input type="file" accept="image/*" className="hidden" onChange={handleNewEnrollmentPhotoChange} />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP 2: Parent / Guardian Information */}
+                {newEnrollmentStep === 2 && (
+                  <div className="space-y-4 animate-in fade-in duration-200">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-gold block">Parent / Guardian Name *</label>
+                      <input
+                        type="text"
+                        value={newEnrollmentData.parent_name}
+                        onChange={(e) => setNewEnrollmentData({ ...newEnrollmentData, parent_name: e.target.value })}
+                        required
+                        placeholder="Enter parent's full name..."
+                        className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white font-bold text-sm focus:outline-none focus:border-gold/30"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-gold block">Contact Phone Number *</label>
+                      <input
+                        type="tel"
+                        value={newEnrollmentData.client_phone}
+                        onChange={(e) => setNewEnrollmentData({ ...newEnrollmentData, client_phone: e.target.value })}
+                        required
+                        placeholder="e.g. +254 712 345 678"
+                        className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white font-bold text-sm focus:outline-none focus:border-gold/30"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-gold block">Communication Preference</label>
+                      <select
+                        value={newEnrollmentData.communication_pref}
+                        onChange={(e) => setNewEnrollmentData({ ...newEnrollmentData, communication_pref: e.target.value })}
+                        className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white font-bold text-sm focus:outline-none focus:border-gold/30"
+                      >
+                        <option value="whatsapp" className="bg-forest text-white">WhatsApp Preferred</option>
+                        <option value="sms" className="bg-forest text-white">SMS Direct Alerts</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP 3: Program & Settings */}
+                {newEnrollmentStep === 3 && (
+                  <div className="space-y-4 animate-in fade-in duration-200">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-gold block">Target Program *</label>
+                      <select
+                        value={newEnrollmentData.program_id}
+                        onChange={(e) => setNewEnrollmentData({ ...newEnrollmentData, program_id: e.target.value })}
+                        required
+                        className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white font-bold text-sm focus:outline-none focus:border-gold/30"
+                      >
+                        <option value="" disabled className="bg-forest text-white/50">Select program...</option>
+                        {programs.map(prog => (
+                          <option key={prog.id} value={prog.id.toString()} className="bg-forest text-white">{prog.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-gold block">Pricing Plan</label>
+                      <select
+                        value={newEnrollmentData.pricing_plan}
+                        onChange={(e) => setNewEnrollmentData({ ...newEnrollmentData, pricing_plan: e.target.value })}
+                        className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white font-bold text-sm focus:outline-none focus:border-gold/30"
+                      >
+                        <option value="session" className="bg-forest text-white">Per Session / Walk-in</option>
+                        <option value="monthly" className="bg-forest text-white">Monthly Cohort</option>
+                        <option value="quarterly" className="bg-forest text-white">Quarterly Plan</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-gold block">Enrollment Status</label>
+                      <select
+                        value={newEnrollmentData.status}
+                        onChange={(e) => setNewEnrollmentData({ ...newEnrollmentData, status: e.target.value })}
+                        className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white font-bold text-sm focus:outline-none focus:border-gold/30"
+                      >
+                        <option value="active" className="bg-forest text-white">Active Roster</option>
+                        <option value="pending" className="bg-forest text-white">Pending Approval</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-gold block">Initial Payment Status</label>
+                      <select
+                        value={newEnrollmentData.payment_status}
+                        onChange={(e) => setNewEnrollmentData({ ...newEnrollmentData, payment_status: e.target.value })}
+                        className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white font-bold text-sm focus:outline-none focus:border-gold/30"
+                      >
+                        <option value="pending" className="bg-forest text-white">Pending / Awaiting</option>
+                        <option value="unpaid" className="bg-forest text-white">Unpaid Ledger</option>
+                        <option value="fully_paid" className="bg-forest text-white">Fully Paid</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-6 border-t border-white/5 flex gap-4">
+                {newEnrollmentStep > 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => setNewEnrollmentStep(newEnrollmentStep - 1)}
+                    className="flex-1 py-4 bg-white/5 hover:bg-white/10 text-white rounded-2xl font-bold uppercase transition-all text-xs"
+                  >
+                    Back
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsNewEnrollmentOpen(false)}
+                    className="flex-1 py-4 bg-white/5 hover:bg-white/10 text-white rounded-2xl font-bold uppercase transition-all text-xs"
+                  >
+                    Cancel
+                  </button>
+                )}
+
+                {newEnrollmentStep < 3 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (newEnrollmentStep === 1 && !newEnrollmentData.participant_name) {
+                        alert('Athlete name is required');
+                        return;
+                      }
+                      if (newEnrollmentStep === 2 && (!newEnrollmentData.parent_name || !newEnrollmentData.client_phone)) {
+                        alert('Parent name and phone number are required');
+                        return;
+                      }
+                      setNewEnrollmentStep(newEnrollmentStep + 1);
+                    }}
+                    className="flex-1 py-4 bg-gradient-to-r from-gold to-gold-muted text-forest rounded-2xl font-extrabold shadow-gold-md hover:shadow-gold-lg transition-all uppercase text-xs tracking-widest flex items-center justify-center gap-1.5"
+                  >
+                    Continue
+                    <ChevronRight className="w-4 h-4 text-forest" />
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="flex-1 py-4 bg-gradient-to-r from-gold to-gold-muted text-forest rounded-2xl font-extrabold shadow-gold-md hover:shadow-gold-lg transition-all uppercase text-xs tracking-widest flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  >
+                    {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin text-forest" /> : 'REGISTER STUDENT'}
+                  </button>
+                )}
               </div>
             </form>
           </div>
@@ -1390,9 +1836,11 @@ export default function AcademyOperations() {
                 {/* Enrollment status controls */}
                 <div className="space-y-2 pt-4 border-t border-white/5">
                   <label className="text-[10px] font-black uppercase tracking-widest text-gold block">Enrollment Status Control</label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {[
+                      { id: 'pending', label: 'Pending Roster', color: 'border-yellow-500 bg-yellow-500/10 text-yellow-400' },
                       { id: 'active', label: 'Active Roster', color: 'border-emerald-500 bg-emerald-500/10 text-emerald-400' },
+                      { id: 'inactive', label: 'Inactive Roster', color: 'border-white/20 bg-white/5 text-white/50' },
                       { id: 'completed', label: 'Archived / Done', color: 'border-purple-500 bg-purple-500/10 text-purple-400' },
                       { id: 'cancelled', label: 'Cancelled / Expelled', color: 'border-red-500 bg-red-500/10 text-red-400' }
                     ].map(statusItem => {

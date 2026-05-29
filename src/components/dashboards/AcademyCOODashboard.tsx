@@ -161,11 +161,11 @@ export default function AcademyCOODashboard({
       const { error: notifyError } = await supabase
         .from('notifications')
         .insert([{
-          type: 'sms',
-          recipient: smsPhone,
+          type: 'promotion',
+          recipient_phone: smsPhone,
           message: smsMessage,
           status: 'pending',
-          logged_by: staff?.id || null
+          sent_by: staff?.id || null
         }]);
 
       if (notifyError) throw notifyError;

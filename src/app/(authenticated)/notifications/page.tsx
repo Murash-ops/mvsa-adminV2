@@ -16,9 +16,11 @@ import {
   ChevronRight,
   RefreshCw
 } from 'lucide-react';
+import { useAuth } from '@/components/AuthContext';
 
 export default function NotificationsBroadcastPage() {
   const supabase = createClient();
+  const { staff } = useAuth();
   const [notifications, setNotifications] = useState<any[]>([]);
   const [programs, setPrograms] = useState<any[]>([]);
   const [isLoadingLedger, setIsLoadingLedger] = useState(true);
@@ -209,7 +211,8 @@ export default function NotificationsBroadcastPage() {
         message: messageText.trim(),
         type: 'promotion',
         status: 'sent',
-        sent_at: new Date().toISOString()
+        sent_at: new Date().toISOString(),
+        sent_by: staff?.id || null
       }));
 
       // Insert in chunks of 50 to avoid payload caps

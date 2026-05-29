@@ -457,10 +457,49 @@ export default function PlayerProfilePage() {
                       strokeWidth={1.5}
                       strokeDasharray="5 5"
                     />
+
+                    {/* Active attention flag markers on timeline */}
+                    {chartData.map((d, index) => {
+                      if (!d.flag) return null;
+                      let fill = '#94a3b8';
+                      if (d.flag === 'urgent') fill = '#dc3545';
+                      if (d.flag === 'concern') fill = '#f59e0b';
+                      if (d.flag === 'new_player') fill = '#38bdf8';
+                      return (
+                        <ReferenceDot
+                          key={index}
+                          x={d.date}
+                          y={d.gradeNumeric}
+                          r={6}
+                          fill={fill}
+                          stroke="#ffffff"
+                          strokeWidth={2}
+                        />
+                      );
+                    })}
                   </LineChart>
                 </ResponsiveContainer>
               )}
             </div>
+
+            {/* Attention Flags Legend */}
+            {chartData.some(d => d.flag) && (
+              <div className="flex flex-wrap items-center justify-center gap-6 mt-4 p-4 bg-white/[0.02] border border-white/5 rounded-xl animate-in fade-in duration-300">
+                <span className="text-[10px] font-black uppercase text-gold tracking-widest">TIMELINE ATTENTION FLAGS:</span>
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 bg-[#dc3545] rounded-full border border-white/20" />
+                  <span className="text-[10px] text-white/60 font-bold uppercase tracking-wider">Urgent Action Required</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 bg-[#f59e0b] rounded-full border border-white/20" />
+                  <span className="text-[10px] text-white/60 font-bold uppercase tracking-wider">Developmental Concern</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 bg-[#38bdf8] rounded-full border border-white/20" />
+                  <span className="text-[10px] text-white/60 font-bold uppercase tracking-wider">New Player Audit</span>
+                </div>
+              </div>
+            )}
           </section>
 
           {/* LATEST ASSESSMENT SUMMARY CARD */}
