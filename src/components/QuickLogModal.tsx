@@ -13,7 +13,8 @@ import {
   CheckCircle2, 
   AlertCircle,
   CreditCard,
-  Banknote
+  Banknote,
+  PlusCircle
 } from 'lucide-react';
 
 interface Venue {
@@ -46,6 +47,11 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
   const [amountPaid, setAmountPaid] = useState<string>('');
   const [isBackdated, setIsBackdated] = useState(false);
   const [backdateDate, setBackdateDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+
+  // Discount Tracking States (Correction 2)
+  const [applyDiscount, setApplyDiscount] = useState(false);
+  const [discountAmount, setDiscountAmount] = useState<string>('');
+  const [discountReason, setDiscountReason] = useState('');
   
   // Data State
   const [venues, setVenues] = useState<Venue[]>([]);
@@ -90,19 +96,23 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
     fetchSlots();
   }, [isOpen, selectedVenue, selectedDate]);
 
-  // Calculate Total
-  const totalAmount = selectedSlots.reduce((total, id) => {
+  // Calculate Original Amount
+  const originalAmount = selectedSlots.reduce((total, id) => {
     const slot = slots.find(s => s.id === id);
     if (!slot) return total;
     return total + (slot.price_tier === 'peak' ? 2000 : 1500);
   }, 0);
 
+  // Calculate Live Discount & Final Total
+  const discountVal = applyDiscount ? (parseFloat(discountAmount) || 0) : 0;
+  const finalTotalAmount = originalAmount - discountVal;
+
   // Auto-fill amount paid if empty or matches previous total
   useEffect(() => {
-    if (totalAmount > 0 && (!amountPaid || parseFloat(amountPaid) === 0)) {
-      setAmountPaid(totalAmount.toString());
+    if (finalTotalAmount > 0 && (!amountPaid || parseFloat(amountPaid) === 0 || parseFloat(amountPaid) === originalAmount)) {
+      setAmountPaid(finalTotalAmount.toString());
     }
-  }, [totalAmount]);
+  }, [finalTotalAmount, originalAmount]);
 
   const toggleSlot = (id: number) => {
     setSelectedSlots(prev => 
@@ -114,6 +124,11 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
     e.preventDefault();
     if (!selectedVenue || selectedSlots.length === 0 || !clientName || !clientPhone) {
       setError('Please fill in all required fields.');
+      return;
+    }
+
+    if (discountVal > originalAmount) {
+      setError('Discount amount cannot exceed the original booking amount.');
       return;
     }
 
@@ -140,9 +155,12 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
         client_phone: clientPhone,
         client_name: clientName,
         slot_ids: selectedSlots,
-        total_amount: totalAmount,
+        original_amount: originalAmount,
+        discount_amount: discountVal,
+        discount_reason: applyDiscount ? discountReason : null,
+        total_amount: finalTotalAmount,
         deposit_amount: parsedAmountPaid,
-        balance: totalAmount - parsedAmountPaid,
+        balance: finalTotalAmount - parsedAmountPaid,
         status: 'confirmed',
         source: 'walk_in'
       };
@@ -213,6 +231,9 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
         setAmountPaid('');
         setIsBackdated(false);
         setBackdateDate(format(new Date(), 'yyyy-MM-dd'));
+        setApplyDiscount(false);
+        setDiscountAmount('');
+        setDiscountReason('');
       }, 2000);
 
     } catch (err: any) {
@@ -228,7 +249,7 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       {/* Backdrop */}
       <div 
-        className="absolute inset-0 bg-charcoal/80 backdrop-blur-sm animate-in fade-in duration-300"
+        className="absolute inset-0 bg-charcoal/85 backdrop-blur-sm animate-in fade-in duration-300"
         onClick={onClose}
       />
       
@@ -419,8 +440,60 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
                 )}
               </div>
 
-              {/* Payment Section */}
+              {/* Payment & Billing Section */}
               <div className="bg-surface/50 border border-white/10 rounded-3xl p-8 space-y-6">
+                
+                {/* 🏷️ Expandable Discount Panel (Correction 2) */}
+                <div className="border-b border-white/5 pb-6">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setApplyDiscount(!applyDiscount);
+                      setDiscountAmount('');
+                      setDiscountReason('');
+                    }}
+                    className="text-xs font-bold text-gold hover:text-white uppercase tracking-wider flex items-center gap-2 focus:outline-none transition-colors"
+                  >
+                    <PlusCircle className={`w-4.5 h-4.5 transition-transform duration-200 ${applyDiscount ? 'rotate-45 text-red-400' : 'text-gold'}`} />
+                    {applyDiscount ? 'Cancel Discount' : 'Apply Discount / Special Promotion'}
+                  </button>
+
+                  {applyDiscount && (
+                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 p-5 rounded-2xl bg-white/[0.02] border border-white/5 animate-in slide-in-from-top-2 duration-200">
+                      <div>
+                        <label className="block text-xs font-bold text-charcoal-light mb-1.5 ml-1">Discount Amount (KES)</label>
+                        <input 
+                          type="number"
+                          value={discountAmount}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (parseFloat(val) > originalAmount) {
+                              setDiscountAmount(originalAmount.toString());
+                            } else {
+                              setDiscountAmount(val);
+                            }
+                          }}
+                          placeholder="e.g. 500"
+                          className="w-full px-4 py-3 bg-white/5 border border-white/10 text-white placeholder-white/35 rounded-xl text-sm font-mono font-bold focus:outline-none focus:ring-2 focus:ring-gold/20"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-charcoal-light mb-1.5 ml-1">Discount Reason</label>
+                        <input 
+                          type="text"
+                          value={discountReason}
+                          onChange={(e) => setDiscountReason(e.target.value)}
+                          placeholder="e.g. Family / Loyalty Discount"
+                          className="w-full px-4 py-3 bg-white/5 border border-white/10 text-white placeholder-white/35 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gold/20"
+                        />
+                      </div>
+                      <div className="sm:col-span-2 pt-2 text-xs font-mono font-extrabold text-amber-400">
+                        Live Pricing: Original KES {originalAmount.toLocaleString()} → Discounted KES {finalTotalAmount.toLocaleString()}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className="space-y-4">
                     <h3 className="text-xs uppercase font-bold text-muted tracking-widest flex items-center gap-2">
@@ -457,9 +530,24 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
                     </h3>
                     <div className="space-y-3">
                       <div className="flex justify-between items-center text-sm">
-                        <span className="text-charcoal-light">Total Fee</span>
-                        <span className="font-mono font-bold text-white">KES {totalAmount.toLocaleString()}</span>
+                        <span className="text-charcoal-light">Original Rate</span>
+                        <span className={`font-mono font-bold text-white ${applyDiscount ? 'text-white/40 line-through' : ''}`}>
+                          KES {originalAmount.toLocaleString()}
+                        </span>
                       </div>
+                      
+                      {applyDiscount && (
+                        <div className="flex justify-between items-center text-sm text-amber-400 font-bold">
+                          <span>Discount Applied</span>
+                          <span className="font-mono">- KES {discountVal.toLocaleString()}</span>
+                        </div>
+                      )}
+
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-charcoal-light">Total Fee</span>
+                        <span className="font-mono font-bold text-white">KES {finalTotalAmount.toLocaleString()}</span>
+                      </div>
+                      
                       <div className="flex justify-between items-center gap-4">
                         <span className="text-xs font-bold text-charcoal-light">Amount Paid</span>
                         <div className="relative flex-1 max-w-[150px]">
@@ -475,7 +563,7 @@ export function QuickLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: (
                       <div className="pt-3 border-t border-white/10 flex justify-between items-center">
                         <span className="text-sm font-bold text-white">Balance Due</span>
                         <span className="font-mono font-bold text-lg text-gold">
-                          KES {(totalAmount - (parseFloat(amountPaid) || 0)).toLocaleString()}
+                          KES {Math.max(0, finalTotalAmount - (parseFloat(amountPaid) || 0)).toLocaleString()}
                         </span>
                       </div>
                     </div>

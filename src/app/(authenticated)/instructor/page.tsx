@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import { useAuth } from '@/components/AuthContext';
+import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { 
   Users, 
@@ -37,6 +38,7 @@ import {
 export default function InstructorPortal() {
   const { staff } = useAuth();
   const supabase = createClient();
+  const router = useRouter();
   const [programs, setPrograms] = useState<any[]>([]);
   const [selectedProgram, setSelectedProgram] = useState<any | null>(null);
   const [enrollments, setEnrollments] = useState<any[]>([]);
@@ -424,7 +426,7 @@ export default function InstructorPortal() {
                       {/* Action buttons */}
                       <div className="flex items-center gap-2 self-end sm:self-center">
                         <button 
-                          onClick={() => handleOpenProfile(e)}
+                          onClick={() => router.push(`/players/${e.id}`)}
                           className="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors border border-white/10"
                         >
                           View Profile

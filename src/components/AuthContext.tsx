@@ -7,7 +7,7 @@ import { User } from '@supabase/supabase-js';
 type Staff = {
   id: string;
   name: string;
-  role: 'super_admin' | 'admin' | 'coach';
+  role: 'super_admin' | 'admin' | 'boss' | 'academy_coo' | 'receptionist' | 'coach' | 'instructor';
   email: string;
   stream_scope?: 'all' | 'stream_1' | 'stream_2';
 };

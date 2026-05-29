@@ -23,7 +23,9 @@ import {
   Phone,
   MapPin,
   Calendar,
-  AlertCircle
+  AlertCircle,
+  Download,
+  Percent
 } from 'lucide-react';
 import { QuickLogModal } from '@/components/QuickLogModal';
 import { useAuth } from '@/components/AuthContext';
@@ -32,6 +34,9 @@ export default function BookingsPage() {
   const supabase = createClient();
   const { staff } = useAuth();
   
+  // Navigation tabs: bookings (default) or discounts (super_admin only)
+  const [activeTab, setActiveTab] = useState<'bookings' | 'discounts'>('bookings');
+
   // Bookings state
   const [bookings, setBookings] = useState<any[]>([]);
   const [venues, setVenues] = useState<any[]>([]);
@@ -56,6 +61,9 @@ export default function BookingsPage() {
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [editVenueId, setEditVenueId] = useState<number>(0);
+  const [editOriginalAmount, setEditOriginalAmount] = useState('');
+  const [editDiscountAmount, setEditDiscountAmount] = useState('');
+  const [editDiscountReason, setEditDiscountReason] = useState('');
   const [editTotal, setEditTotal] = useState<string>('');
   const [editDeposit, setEditDeposit] = useState<string>('');
   const [editDate, setEditDate] = useState<string>('');
@@ -70,6 +78,7 @@ export default function BookingsPage() {
   // Determine user authorization
   const isCoach = (staff?.role as string) === 'coach' || (staff?.role as string) === 'instructor';
   const hasFullAccess = !isCoach; // super_admin, admin, boss, receptionist, academy_coo
+  const isSuperAdmin = (staff?.role as string) === 'super_admin';
 
   // Fetch initial data
   useEffect(() => {
@@ -163,8 +172,6 @@ export default function BookingsPage() {
     
     setIsLoading(true);
     try {
-      // Ensure the Supabase client session is hydrated on the client before writing,
-      // so triggers like enforce_booking_rules successfully identify the admin user
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         throw new Error('Your session is unauthenticated or expired. Please re-login.');
@@ -208,6 +215,9 @@ export default function BookingsPage() {
     setEditName(booking.client_name);
     setEditPhone(booking.client_phone);
     setEditVenueId(booking.venue_id);
+    setEditOriginalAmount((booking.original_amount || booking.total_amount).toString());
+    setEditDiscountAmount((booking.discount_amount || 0).toString());
+    setEditDiscountReason(booking.discount_reason || '');
     setEditTotal(booking.total_amount.toString());
     setEditDeposit(booking.deposit_amount.toString());
     setEditDate(format(new Date(booking.created_at), 'yyyy-MM-dd'));
@@ -218,17 +228,24 @@ export default function BookingsPage() {
   const handleEditBooking = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedBooking) return;
+    
+    const origAmt = parseFloat(editOriginalAmount) || 0;
+    const discAmt = parseFloat(editDiscountAmount) || 0;
     const total = parseFloat(editTotal);
     const deposit = parseFloat(editDeposit);
+
     if (isNaN(total) || isNaN(deposit) || total < 0 || deposit < 0) {
       alert('Please enter valid positive numeric amounts.');
       return;
     }
 
+    if (discAmt > origAmt) {
+      alert('Discount cannot exceed the original rate.');
+      return;
+    }
+
     setIsEditSubmitting(true);
     try {
-      // Ensure the Supabase client session is hydrated on the client before writing,
-      // so triggers like enforce_booking_rules successfully identify the admin user
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         throw new Error('Your session is unauthenticated or expired. Please re-login.');
@@ -240,6 +257,9 @@ export default function BookingsPage() {
           client_name: editName,
           client_phone: editPhone,
           venue_id: editVenueId,
+          original_amount: origAmt,
+          discount_amount: discAmt,
+          discount_reason: editDiscountReason || null,
           total_amount: total,
           deposit_amount: deposit,
           balance: total - deposit,
@@ -281,8 +301,6 @@ export default function BookingsPage() {
 
     setIsBalanceSubmitting(true);
     try {
-      // Ensure the Supabase client session is hydrated on the client before writing,
-      // so triggers like enforce_booking_rules successfully identify the admin user
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         throw new Error('Your session is unauthenticated or expired. Please re-login.');
@@ -334,8 +352,6 @@ export default function BookingsPage() {
     
     setIsLoading(true);
     try {
-      // Ensure the Supabase client session is hydrated on the client before writing,
-      // so triggers like enforce_booking_rules successfully identify the admin user
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         throw new Error('Your session is unauthenticated or expired. Please re-login.');
@@ -377,7 +393,6 @@ export default function BookingsPage() {
       });
       
       if (error) throw error;
-      
       alert('SMS dispatched successfully to client!');
     } catch (err: any) {
       alert(err.message || 'SMS service triggered successfully (mocked callback logged to database).');
@@ -387,8 +402,87 @@ export default function BookingsPage() {
     }
   };
 
+  // 6. CSV Exporters (Correction 2)
+  const handleExportBookings = () => {
+    const headers = ['Date', 'Client Name', 'Phone', 'Venue', 'Original Amount (KES)', 'Discount Amount (KES)', 'Discount Reason', 'Final Paid (KES)', 'Balance (KES)', 'Status', 'Source'];
+    
+    const rows = bookings.map(b => [
+      format(new Date(b.created_at), 'yyyy-MM-dd'),
+      `"${b.client_name.replace(/"/g, '""')}"`,
+      `"${b.client_phone}"`,
+      `"${b.venues?.name || 'Unknown'}"`,
+      b.original_amount || b.total_amount,
+      b.discount_amount || 0,
+      `"${(b.discount_reason || '').replace(/"/g, '""')}"`,
+      Number(b.total_amount) - Number(b.balance),
+      b.balance,
+      b.status,
+      b.source
+    ]);
+    
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `MVSA_Bookings_Report_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportDiscounts = () => {
+    const discountedBookings = bookings.filter(b => b.status !== 'cancelled' && Number(b.discount_amount) > 0);
+    
+    const headers = ['Date', 'Client Name', 'Original Amount (KES)', 'Discount Amount (KES)', 'Discount Reason', 'Final Amount (KES)'];
+    
+    const rows = discountedBookings.map(b => [
+      format(new Date(b.created_at), 'yyyy-MM-dd'),
+      `"${b.client_name.replace(/"/g, '""')}"`,
+      b.original_amount || b.total_amount,
+      b.discount_amount || 0,
+      `"${(b.discount_reason || '').replace(/"/g, '""')}"`,
+      b.total_amount
+    ]);
+    
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `MVSA_Discounts_Report_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Compile monthly and yearly discount metrics (Correction 2)
+  const getDiscountReportStats = () => {
+    const currentYearMonth = new Date().toISOString().substring(0, 7);
+    const currentYear = new Date().getFullYear().toString();
+
+    const nonCancelled = bookings.filter(b => b.status !== 'cancelled');
+
+    const thisMonth = nonCancelled
+      .filter(b => b.created_at && b.created_at.startsWith(currentYearMonth))
+      .reduce((sum, b) => sum + Number(b.discount_amount || 0), 0);
+
+    const thisYear = nonCancelled
+      .filter(b => b.created_at && b.created_at.startsWith(currentYear))
+      .reduce((sum, b) => sum + Number(b.discount_amount || 0), 0);
+
+    return { thisMonth, thisYear };
+  };
+
+  const discountStats = getDiscountReportStats();
+  const discountedBookingsList = bookings.filter(b => b.status !== 'cancelled' && Number(b.discount_amount) > 0);
+
   return (
     <div className="flex flex-col flex-1 p-6 lg:p-10 animate-entrance min-h-full">
+      
+      {/* Header */}
       <header className="mb-10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
         <div>
           <div className="flex items-center gap-2 mb-2">
@@ -396,227 +490,348 @@ export default function BookingsPage() {
             <span className="text-[10px] font-black uppercase tracking-[0.3em] text-gold">Operations</span>
           </div>
           <h1 className="text-4xl lg:text-5xl font-display font-extrabold text-white tracking-tighter leading-none italic uppercase">
-            BOOKINGS
+            Bookings Manager
           </h1>
-          <p className="text-white/40 text-sm font-medium mt-1">Real-time arena reservations and financial overview.</p>
+          <p className="text-white/40 text-sm font-medium mt-1">Real-time arena reservations, ledger auditing, and discounts reports.</p>
         </div>
         
         <div className="flex flex-wrap gap-4 items-center w-full sm:w-auto">
-          <div className="relative group flex-1 sm:flex-none">
-            <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-white/40 group-focus-within:text-gold transition-colors" />
-            <input 
-              type="text" 
-              placeholder="Search bookings..." 
-              className="pl-12 pr-6 py-3 bg-white/5 border border-white/10 rounded-2xl text-sm text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none focus:ring-4 focus:ring-gold/5 transition-all w-full sm:w-64"
-            />
+          {isSuperAdmin && (
+            <div className="flex bg-white/5 p-1.5 rounded-2xl border border-white/10 gap-1.5">
+              <button
+                onClick={() => setActiveTab('bookings')}
+                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${activeTab === 'bookings' ? 'bg-gold text-forest font-extrabold shadow-sm' : 'text-white/60 hover:text-white'}`}
+              >
+                Bookings Ledger
+              </button>
+              <button
+                onClick={() => setActiveTab('discounts')}
+                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${activeTab === 'discounts' ? 'bg-gold text-forest font-extrabold shadow-sm' : 'text-white/60 hover:text-white'}`}
+              >
+                <Percent className="w-3.5 h-3.5" />
+                Discounts Report
+              </button>
+            </div>
+          )}
+
+          <div className="flex gap-2 w-full sm:w-auto">
+            {activeTab === 'bookings' ? (
+              <button 
+                onClick={handleExportBookings}
+                className="flex items-center justify-center gap-2 px-5 py-3.5 bg-white/5 border border-white/10 hover:border-gold/30 rounded-2xl text-xs font-bold text-white/70 hover:text-white transition-all w-full sm:w-auto"
+              >
+                <Download className="w-4 h-4 text-gold" />
+                Export Ledger
+              </button>
+            ) : (
+              <button 
+                onClick={handleExportDiscounts}
+                className="flex items-center justify-center gap-2 px-5 py-3.5 bg-white/5 border border-white/10 hover:border-gold/30 rounded-2xl text-xs font-bold text-white/70 hover:text-white transition-all w-full sm:w-auto"
+              >
+                <Download className="w-4 h-4 text-gold" />
+                Export Discounts
+              </button>
+            )}
+
+            <button 
+              onClick={() => setIsQuickLogOpen(true)}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3.5 bg-gradient-to-r from-gold to-gold-muted text-forest rounded-2xl font-extrabold shadow-gold-md hover:shadow-gold-lg transition-all duration-300 spring-bounce hover:scale-[1.02] active:scale-[0.98] group"
+            >
+              <PlusCircle className="w-5 h-5 text-forest stroke-[2.5px] group-hover:rotate-90 transition-transform duration-500" /> 
+              QUICK LOG
+            </button>
           </div>
-          
-          <button 
-            onClick={() => setIsQuickLogOpen(true)}
-            className="flex items-center gap-2 px-6 py-3.5 bg-gradient-to-r from-gold to-gold-muted text-forest rounded-2xl font-extrabold shadow-gold-md hover:shadow-gold-lg transition-all duration-300 spring-bounce hover:scale-[1.02] active:scale-[0.98] group"
-          >
-            <PlusCircle className="w-5 h-5 text-forest stroke-[2.5px] group-hover:rotate-90 transition-transform duration-500" /> 
-            QUICK LOG
-          </button>
         </div>
       </header>
 
-      <div className="relative group">
-        <div className="absolute -inset-1 bg-gradient-to-r from-gold/10 to-gold-muted/5 rounded-[2.5rem] blur opacity-25 group-hover:opacity-40 transition duration-1000 group-hover:duration-200"></div>
-        
-        <div className="relative glass rounded-[2rem] overflow-hidden shadow-pitch">
-          <div className="scrollbar-hide overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[900px]">
-              <thead>
-                <tr className="bg-white/[0.02] border-b border-white/5">
-                  <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Client Details</th>
-                  <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Venue</th>
-                  <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Financials</th>
-                  <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Status</th>
-                  <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Timestamp</th>
-                  <th className="px-8 py-5"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {isLoading ? (
-                  [1, 2, 3, 4].map(i => (
-                    <tr key={i} className="animate-pulse">
-                      <td colSpan={6} className="px-8 py-8">
-                        <div className="h-12 bg-white/5 rounded-2xl w-full"></div>
+      {/* =========================================================
+          TAB 1: BOOKINGS LEDGER
+          ========================================================= */}
+      {activeTab === 'bookings' ? (
+        <div className="relative group">
+          <div className="absolute -inset-1 bg-gradient-to-r from-gold/10 to-gold-muted/5 rounded-[2.5rem] blur opacity-25 group-hover:opacity-40 transition duration-1000 group-hover:duration-200"></div>
+          
+          <div className="relative glass rounded-[2rem] overflow-hidden shadow-pitch">
+            <div className="scrollbar-hide overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[900px]">
+                <thead>
+                  <tr className="bg-white/[0.02] border-b border-white/5">
+                    <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Client Details</th>
+                    <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Venue</th>
+                    <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Financials</th>
+                    <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Status</th>
+                    <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Timestamp</th>
+                    <th className="px-8 py-5"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5 text-white">
+                  {isLoading ? (
+                    [1, 2, 3, 4].map(i => (
+                      <tr key={i} className="animate-pulse">
+                        <td colSpan={6} className="px-8 py-8">
+                          <div className="h-12 bg-white/5 rounded-2xl w-full"></div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : bookings.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-8 py-32 text-center">
+                        <div className="flex flex-col items-center gap-4 opacity-40">
+                          <Clock className="w-12 h-12 text-gold" />
+                          <p className="font-display font-bold text-xl text-white">No records found yet.</p>
+                        </div>
                       </td>
                     </tr>
-                  ))
-                ) : bookings.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-8 py-32 text-center">
-                      <div className="flex flex-col items-center gap-4 opacity-40">
-                        <Clock className="w-12 h-12 text-gold" />
-                        <p className="font-display font-bold text-xl text-white">No records found yet.</p>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  bookings.map((booking) => (
-                    <tr key={booking.id} className="hover:bg-white/[0.02] transition-all duration-300 group/row">
-                      <td className="px-8 py-6">
-                        <div className="font-bold text-white text-lg tracking-tight group-hover/row:text-gold transition-colors">{booking.client_name}</div>
-                        <div className="text-xs text-charcoal-light/60 font-mono tracking-wider mt-0.5">{booking.client_phone}</div>
-                        {booking.checkout_request_id && (
-                          <div className="text-[10px] mt-1.5 bg-gold/10 text-gold px-2.5 py-0.5 rounded-lg border border-gold/20 font-mono inline-block uppercase font-bold">
-                            Code: {booking.checkout_request_id}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-8 py-6">
-                        <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-xl border border-white/10">
-                          <span className="w-1.5 h-1.5 bg-gold rounded-full"></span>
-                          <span className="font-bold text-xs text-white uppercase tracking-wider">{booking.venues?.name || 'Unknown'}</span>
-                        </div>
-                      </td>
-                      <td className="px-8 py-6">
-                        <div className="flex flex-col">
-                          <span className="text-lg font-black text-white tracking-tighter">
-                            KES {(booking.deposit_amount || 0).toLocaleString()}
-                          </span>
-                          <span className="text-[10px] font-black text-gold uppercase tracking-[0.1em] mt-0.5">
-                            Total: KES {(booking.total_amount || 0).toLocaleString()} | Balance: KES {(booking.balance || 0).toLocaleString()}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-8 py-6">
-                        <span className={`
-                          inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border
-                          ${getStatusColor(booking.status)}
-                        `}>
-                          {booking.status === 'confirmed' ? <CheckCircle className="w-3 h-3" /> : 
-                           booking.status === 'pending' ? <Clock className="w-3 h-3" /> : 
-                           <XCircle className="w-3 h-3" />}
-                          {booking.status}
-                        </span>
-                      </td>
-                      <td className="px-8 py-6">
-                        <div className="text-sm font-medium text-charcoal-light">
-                          {format(new Date(booking.created_at), 'MMM d, yyyy')}
-                        </div>
-                        <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mt-0.5">
-                          {format(new Date(booking.created_at), 'h:mm a')}
-                        </div>
-                      </td>
-                      <td className="px-8 py-6 text-right">
-                        <div className="flex justify-end items-center gap-3">
-                          {booking.status === 'pending' && hasFullAccess && (
-                            <button 
-                              onClick={() => confirmBooking(booking.id, booking.deposit_amount, booking.checkout_request_id)}
-                              className="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-green-600/20 transition-all hover:-translate-y-0.5 active:scale-95"
-                            >
-                              Verify Payment
-                            </button>
+                  ) : (
+                    bookings.map((booking) => (
+                      <tr key={booking.id} className="hover:bg-white/[0.02] transition-all duration-300 group/row">
+                        <td className="px-8 py-6">
+                          <div className="font-bold text-white text-lg tracking-tight group-hover/row:text-gold transition-colors">{booking.client_name}</div>
+                          <div className="text-xs text-charcoal-light/60 font-mono tracking-wider mt-0.5">{booking.client_phone}</div>
+                          {booking.checkout_request_id && (
+                            <div className="text-[10px] mt-1.5 bg-gold/10 text-gold px-2.5 py-0.5 rounded-lg border border-gold/20 font-mono inline-block uppercase font-bold">
+                              Code: {booking.checkout_request_id}
+                            </div>
                           )}
-                          
-                          {/* THREE DOTS MENU CONTAINER */}
-                          <div className="relative">
-                            <button 
-                              onClick={() => setActiveMenuBookingId(activeMenuBookingId === booking.id ? null : booking.id)}
-                              className="p-2.5 hover:bg-white/5 rounded-xl transition-all group/opt relative"
-                            >
-                              <MoreVertical className="w-5 h-5 text-white/40 group-hover/opt:text-white" />
-                            </button>
-                            
-                            {activeMenuBookingId === booking.id && (
-                              <>
-                                <div 
-                                  className="fixed inset-0 z-40 bg-transparent" 
-                                  onClick={() => setActiveMenuBookingId(null)}
-                                />
-                                <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-charcoal border border-white/10 shadow-2xl z-50 overflow-hidden divide-y divide-white/5 py-1.5 text-left animate-in fade-in slide-in-from-top-2 duration-200">
-                                  <div className="px-4 py-2">
-                                    <p className="text-[9px] font-bold uppercase tracking-widest text-white/35">Actions Menu</p>
-                                    <p className="text-xs font-bold text-white truncate max-w-full">{booking.client_name}</p>
-                                  </div>
-                                  
-                                  <div className="py-1">
-                                    <button
-                                      onClick={() => {
-                                        setSelectedBooking(booking);
-                                        setIsDetailsOpen(true);
-                                        setActiveMenuBookingId(null);
-                                      }}
-                                      className="w-full px-4 py-2.5 text-xs font-bold text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-3 transition-colors"
-                                    >
-                                      <Eye className="w-4 h-4 text-gold" />
-                                      View Details
-                                    </button>
-                                  </div>
-
-                                  {hasFullAccess && (
-                                    <div className="py-1">
-                                      {booking.status === 'pending' && (
-                                        <button
-                                          onClick={() => {
-                                            confirmBooking(booking.id, booking.deposit_amount, booking.checkout_request_id);
-                                            setActiveMenuBookingId(null);
-                                          }}
-                                          className="w-full px-4 py-2.5 text-xs font-bold text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-3 transition-colors"
-                                        >
-                                          <CheckCircle className="w-4 h-4 text-green-400" />
-                                          Confirm Payment
-                                        </button>
-                                      )}
-                                      
-                                      <button
-                                        onClick={() => openEditModal(booking)}
-                                        className="w-full px-4 py-2.5 text-xs font-bold text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-3 transition-colors"
-                                      >
-                                        <Edit className="w-4 h-4 text-sky-400" />
-                                        Edit Booking
-                                      </button>
-                                      
-                                      {booking.balance > 0 && (
-                                        <button
-                                          onClick={() => openBalancePaymentModal(booking)}
-                                          className="w-full px-4 py-2.5 text-xs font-bold text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-3 transition-colors"
-                                        >
-                                          <DollarSign className="w-4 h-4 text-emerald-400" />
-                                          Add Balance Payment
-                                        </button>
-                                      )}
-
-                                      <button
-                                        onClick={() => handleSendSMS(booking)}
-                                        className="w-full px-4 py-2.5 text-xs font-bold text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-3 transition-colors"
-                                      >
-                                        <Send className="w-4 h-4 text-purple-400" />
-                                        Send SMS Alert
-                                      </button>
-                                    </div>
-                                  )}
-
-                                  {hasFullAccess && booking.status !== 'cancelled' && (
-                                    <div className="py-1">
-                                      <button
-                                        onClick={() => handleCancelBooking(booking)}
-                                        className="w-full px-4 py-2.5 text-xs font-bold text-red-400 hover:text-red-300 hover:bg-red-500/10 flex items-center gap-3 transition-colors"
-                                      >
-                                        <Trash2 className="w-4 h-4" />
-                                        Cancel Booking
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                              </>
+                        </td>
+                        <td className="px-8 py-6">
+                          <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-xl border border-white/10">
+                            <span className="w-1.5 h-1.5 bg-gold rounded-full"></span>
+                            <span className="font-bold text-xs text-white uppercase tracking-wider">{booking.venues?.name || 'Unknown'}</span>
+                          </div>
+                        </td>
+                        <td className="px-8 py-6">
+                          <div className="flex flex-col">
+                            <span className="text-lg font-black text-white tracking-tighter">
+                              KES {(booking.deposit_amount || 0).toLocaleString()} Paid
+                            </span>
+                            <span className="text-[10px] font-black text-gold uppercase tracking-[0.1em] mt-0.5">
+                              Original KES {(booking.original_amount || booking.total_amount || 0).toLocaleString()} 
+                              {Number(booking.discount_amount) > 0 && ` (Disc: -KES ${Number(booking.discount_amount).toLocaleString()})`} 
+                              → Total: KES {(booking.total_amount || 0).toLocaleString()} | Balance: KES {(booking.balance || 0).toLocaleString()}
+                            </span>
+                            {Number(booking.discount_amount) > 0 && (
+                              <span className="text-[9px] font-extrabold text-amber-400 mt-1 font-mono uppercase tracking-wide">
+                                Discount Reason: {booking.discount_reason || 'Promotional offer'}
+                              </span>
                             )}
                           </div>
+                        </td>
+                        <td className="px-8 py-6">
+                          <span className={`
+                            inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border
+                            ${getStatusColor(booking.status)}
+                          `}>
+                            {booking.status === 'confirmed' ? <CheckCircle className="w-3 h-3" /> : 
+                             booking.status === 'pending' ? <Clock className="w-3 h-3" /> : 
+                             <XCircle className="w-3 h-3" />}
+                            {booking.status}
+                          </span>
+                        </td>
+                        <td className="px-8 py-6">
+                          <div className="text-sm font-medium text-charcoal-light">
+                            {format(new Date(booking.created_at), 'MMM d, yyyy')}
+                          </div>
+                          <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mt-0.5">
+                            {format(new Date(booking.created_at), 'h:mm a')}
+                          </div>
+                        </td>
+                        <td className="px-8 py-6 text-right">
+                          <div className="flex justify-end items-center gap-3">
+                            {booking.status === 'pending' && hasFullAccess && (
+                              <button 
+                                onClick={() => confirmBooking(booking.id, booking.deposit_amount, booking.checkout_request_id)}
+                                className="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-green-600/20 transition-all hover:-translate-y-0.5 active:scale-95"
+                              >
+                                Verify Payment
+                              </button>
+                            )}
+                            
+                            {/* THREE DOTS MENU CONTAINER */}
+                            <div className="relative">
+                              <button 
+                                onClick={() => setActiveMenuBookingId(activeMenuBookingId === booking.id ? null : booking.id)}
+                                className="p-2.5 hover:bg-white/5 rounded-xl transition-all group/opt relative"
+                              >
+                                <MoreVertical className="w-5 h-5 text-white/40 group-hover/opt:text-white" />
+                              </button>
+                              
+                              {activeMenuBookingId === booking.id && (
+                                <>
+                                  <div 
+                                    className="fixed inset-0 z-40 bg-transparent" 
+                                    onClick={() => setActiveMenuBookingId(null)}
+                                  />
+                                  <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-charcoal border border-white/10 shadow-2xl z-50 overflow-hidden divide-y divide-white/5 py-1.5 text-left animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <div className="px-4 py-2">
+                                      <p className="text-[9px] font-bold uppercase tracking-widest text-white/35">Actions Menu</p>
+                                      <p className="text-xs font-bold text-white truncate max-w-full">{booking.client_name}</p>
+                                    </div>
+                                    
+                                    <div className="py-1">
+                                      <button
+                                        onClick={() => {
+                                          setSelectedBooking(booking);
+                                          setIsDetailsOpen(true);
+                                          setActiveMenuBookingId(null);
+                                        }}
+                                        className="w-full px-4 py-2.5 text-xs font-bold text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-3 transition-colors"
+                                      >
+                                        <Eye className="w-4 h-4 text-gold" />
+                                        View Details
+                                      </button>
+                                    </div>
 
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                                    {hasFullAccess && (
+                                      <div className="py-1">
+                                        {booking.status === 'pending' && (
+                                          <button
+                                            onClick={() => {
+                                              confirmBooking(booking.id, booking.deposit_amount, booking.checkout_request_id);
+                                              setActiveMenuBookingId(null);
+                                            }}
+                                            className="w-full px-4 py-2.5 text-xs font-bold text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-3 transition-colors"
+                                          >
+                                            <CheckCircle className="w-4 h-4 text-green-400" />
+                                            Confirm Payment
+                                          </button>
+                                        )}
+                                        
+                                        <button
+                                          onClick={() => openEditModal(booking)}
+                                          className="w-full px-4 py-2.5 text-xs font-bold text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-3 transition-colors"
+                                        >
+                                          <Edit className="w-4 h-4 text-sky-400" />
+                                          Edit Booking
+                                        </button>
+                                        
+                                        {booking.balance > 0 && (
+                                          <button
+                                            onClick={() => openBalancePaymentModal(booking)}
+                                            className="w-full px-4 py-2.5 text-xs font-bold text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-3 transition-colors"
+                                          >
+                                            <DollarSign className="w-4 h-4 text-emerald-400" />
+                                            Add Balance Payment
+                                          </button>
+                                        )}
+
+                                        <button
+                                          onClick={() => handleSendSMS(booking)}
+                                          className="w-full px-4 py-2.5 text-xs font-bold text-white/80 hover:text-white hover:bg-white/5 flex items-center gap-3 transition-colors"
+                                        >
+                                          <Send className="w-4 h-4 text-purple-400" />
+                                          Send SMS Alert
+                                        </button>
+                                      </div>
+                                    )}
+
+                                    {hasFullAccess && booking.status !== 'cancelled' && (
+                                      <div className="py-1">
+                                        <button
+                                          onClick={() => handleCancelBooking(booking)}
+                                          className="w-full px-4 py-2.5 text-xs font-bold text-red-400 hover:text-red-300 hover:bg-red-500/10 flex items-center gap-3 transition-colors"
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                          Cancel Booking
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
-      </div>
+      ) : (
+        /* =========================================================
+           TAB 2: DISCOUNTS REPORT (super_admin only - Correction 2)
+           ========================================================= */
+        <div className="space-y-8 animate-entrance">
+          
+          {/* Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div className="bg-card p-6 rounded-3xl border border-white/5 shadow-pitch hover:border-white/10 transition-all duration-300">
+              <span className="text-[10px] font-black text-gold uppercase tracking-[0.25em] block mb-2">This Month's Discounts</span>
+              <p className="text-3xl font-extrabold font-display text-white">
+                KES {discountStats.thisMonth.toLocaleString()}
+              </p>
+              <p className="text-xs text-white/30 font-medium mt-2">Sum of active Stream 1 discounts given in {format(new Date(), 'MMMM yyyy')}</p>
+            </div>
+            
+            <div className="bg-card p-6 rounded-3xl border border-white/5 shadow-pitch hover:border-white/10 transition-all duration-300">
+              <span className="text-[10px] font-black text-gold uppercase tracking-[0.25em] block mb-2">This Year's Discounts</span>
+              <p className="text-3xl font-extrabold font-display text-white">
+                KES {discountStats.thisYear.toLocaleString()}
+              </p>
+              <p className="text-xs text-white/30 font-medium mt-2">Sum of active Stream 1 discounts given in {format(new Date(), 'yyyy')}</p>
+            </div>
+          </div>
+
+          {/* Discounts Table */}
+          <div className="relative group">
+            <div className="absolute -inset-1 bg-gradient-to-r from-gold/10 to-gold-muted/5 rounded-[2.5rem] blur opacity-25 group-hover:opacity-40 transition duration-1000 group-hover:duration-200"></div>
+            
+            <div className="relative glass rounded-[2rem] overflow-hidden shadow-pitch">
+              <div className="scrollbar-hide overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-[800px]">
+                  <thead>
+                    <tr className="bg-white/[0.02] border-b border-white/5">
+                      <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Date</th>
+                      <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Client Name</th>
+                      <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Original Amount</th>
+                      <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Discount Amount</th>
+                      <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Reason</th>
+                      <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Final Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5 text-white">
+                    {discountedBookingsList.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-8 py-20 text-center opacity-40 italic text-sm text-charcoal-light">
+                          No discounted bookings recorded this month.
+                        </td>
+                      </tr>
+                    ) : (
+                      discountedBookingsList.map((b) => (
+                        <tr key={b.id} className="hover:bg-white/[0.02] transition-colors font-medium">
+                          <td className="px-8 py-5 font-mono text-xs text-charcoal-light">
+                            {format(new Date(b.created_at), 'yyyy-MM-dd')}
+                          </td>
+                          <td className="px-8 py-5 font-bold text-white">
+                            {b.client_name}
+                          </td>
+                          <td className="px-8 py-5 font-mono text-xs text-white/50">
+                            KES {(b.original_amount || b.total_amount || 0).toLocaleString()}
+                          </td>
+                          <td className="px-8 py-5 font-mono text-xs text-amber-400 font-extrabold">
+                            - KES {(b.discount_amount || 0).toLocaleString()}
+                          </td>
+                          <td className="px-8 py-5 text-xs text-white/80 max-w-[200px] truncate">
+                            {b.discount_reason || 'Promo'}
+                          </td>
+                          <td className="px-8 py-5 font-mono text-sm text-green-400 font-extrabold">
+                            KES {(b.total_amount || 0).toLocaleString()}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      )}
 
       <QuickLogModal 
         isOpen={isQuickLogOpen} 
@@ -629,7 +844,7 @@ export default function BookingsPage() {
       {/* --- MODAL 1: VIEW DETAILS --- */}
       {isDetailsOpen && selectedBooking && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setIsDetailsOpen(false)} />
+          <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={() => setIsDetailsOpen(false)} />
           <div className="relative bg-charcoal border border-white/10 w-full max-w-2xl max-h-[85vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
               <div>
@@ -703,7 +918,22 @@ export default function BookingsPage() {
 
               {/* Financial Ledger */}
               <div className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl space-y-4">
-                <span className="text-[10px] font-bold text-white/30 uppercase block tracking-wider">Financial Overview</span>
+                <span className="text-[10px] font-bold text-white/30 uppercase block tracking-wider font-display">Financial Overview</span>
+                
+                <div className="grid grid-cols-2 gap-4 pb-4 border-b border-white/5">
+                  <div className="bg-charcoal/50 p-4 rounded-xl">
+                    <span className="text-[9px] text-white/40 block uppercase font-bold">Original Rate</span>
+                    <span className="text-md font-mono font-bold text-white/60 line-through">KES {(selectedBooking.original_amount || selectedBooking.total_amount).toLocaleString()}</span>
+                  </div>
+                  <div className="bg-charcoal/50 p-4 rounded-xl">
+                    <span className="text-[9px] text-white/40 block uppercase font-bold text-amber-400">Discount Amount</span>
+                    <span className="text-md font-mono font-bold text-amber-400">KES {(selectedBooking.discount_amount || 0).toLocaleString()}</span>
+                    {selectedBooking.discount_reason && (
+                      <span className="text-[9px] block text-white/40 italic mt-1 truncate">Reason: {selectedBooking.discount_reason}</span>
+                    )}
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-3 gap-4 border-b border-white/5 pb-4">
                   <div>
                     <span className="text-[9px] text-white/40 block uppercase font-bold">Total Cost</span>
@@ -823,13 +1053,56 @@ export default function BookingsPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-gold uppercase tracking-wider mb-1.5">Total Amount (KES)</label>
+                  <label className="block text-[10px] font-bold text-gold uppercase tracking-wider mb-1.5">Original Rate (KES)</label>
                   <input 
                     type="number"
                     required
-                    value={editTotal}
-                    onChange={(e) => setEditTotal(e.target.value)}
+                    value={editOriginalAmount}
+                    onChange={(e) => {
+                      const orig = parseFloat(e.target.value) || 0;
+                      const disc = parseFloat(editDiscountAmount) || 0;
+                      setEditOriginalAmount(e.target.value);
+                      setEditTotal((orig - disc).toString());
+                    }}
                     className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold transition-all font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gold uppercase tracking-wider mb-1.5">Discount Amount (KES)</label>
+                  <input 
+                    type="number"
+                    value={editDiscountAmount}
+                    onChange={(e) => {
+                      const orig = parseFloat(editOriginalAmount) || 0;
+                      const disc = parseFloat(e.target.value) || 0;
+                      setEditDiscountAmount(e.target.value);
+                      setEditTotal((orig - disc).toString());
+                    }}
+                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold transition-all font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-gold uppercase tracking-wider mb-1.5">Discount Reason</label>
+                <input 
+                  type="text"
+                  value={editDiscountReason}
+                  onChange={(e) => setEditDiscountReason(e.target.value)}
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold transition-all"
+                  placeholder="e.g. Loyalty discount"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-gold uppercase tracking-wider mb-1.5">Final Total (KES)</label>
+                  <input 
+                    type="number"
+                    required
+                    readOnly
+                    value={editTotal}
+                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-xs text-white/50 focus:outline-none font-mono"
                   />
                 </div>
                 <div>

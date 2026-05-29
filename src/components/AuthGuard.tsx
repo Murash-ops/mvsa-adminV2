@@ -22,13 +22,13 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
     if (staff && pathname !== '/login') {
       const routePermissions: Record<string, string[]> = {
-        '/academy-operations': ['super_admin', 'admin'],
-        '/bookings': ['super_admin', 'admin'],
-        '/walkins': ['super_admin', 'admin'],
-        '/expenses': ['super_admin', 'admin'],
-        '/programs': ['super_admin', 'admin'],
-        '/instructor': ['super_admin', 'coach'],
-        '/notifications': ['super_admin', 'admin'],
+        '/academy-operations': ['super_admin', 'admin', 'boss', 'academy_coo'],
+        '/bookings': ['super_admin', 'admin', 'boss', 'receptionist'],
+        '/walkins': ['super_admin', 'admin', 'boss', 'receptionist'],
+        '/expenses': ['super_admin', 'admin', 'boss', 'academy_coo', 'receptionist'],
+        '/programs': ['super_admin', 'admin', 'boss', 'academy_coo'],
+        '/instructor': ['super_admin', 'coach', 'instructor'],
+        '/notifications': ['super_admin', 'admin', 'boss', 'receptionist'],
         '/staff': ['super_admin'],
         '/staff-management': ['super_admin'],
         '/settings': ['super_admin']

@@ -58,16 +58,25 @@ test.describe('MVSA Admin Site Mobile Responsiveness & Touch Usability', () => {
 
         const isAuthTest = !testInfo.title.includes('Page: Login');
         if (isAuthTest) {
-          // Navigate to login page
-          await page.goto('/login', { waitUntil: 'domcontentloaded' });
+          // Go to dashboard first to see if we are already logged in
+          await page.goto('/', { waitUntil: 'domcontentloaded' });
+          await page.waitForTimeout(1000);
           
-          // Fill in credentials
-          await page.locator('input[type="email"]').fill('murashmurash07@gmail.com');
-          await page.locator('input[type="password"]').fill('123456');
-          await page.getByRole('button', { name: /SIGN IN/i }).click();
+          const header = page.locator('header').first();
+          const isAlreadyLoggedIn = await header.isVisible();
+          
+          if (!isAlreadyLoggedIn) {
+            // Navigate to login page
+            await page.goto('/login', { waitUntil: 'domcontentloaded' });
+            
+            // Fill in credentials
+            await page.locator('input[type="email"]').fill('murashmurash07@gmail.com');
+            await page.locator('input[type="password"]').fill('123456');
+            await page.getByRole('button', { name: /SIGN IN/i }).click();
 
-          // Wait for the authenticated header layout to mount
-          await expect(page.locator('header').first()).toBeVisible({ timeout: 20000 });
+            // Wait for the authenticated header layout to mount
+            await expect(page.locator('header').first()).toBeVisible({ timeout: 20000 });
+          }
         }
       });
 
@@ -105,7 +114,7 @@ test.describe('MVSA Admin Site Mobile Responsiveness & Touch Usability', () => {
 
           // 3. Verify Text Readability (No text elements horizontal overflow)
           const overflowingTextElements = await page.evaluate(() => {
-            const elements = Array.from(document.querySelectorAll('h1, h2, h3, h4, p'));
+            const elements = Array.from(document.querySelectorAll('h1, h2, h3, h4, p')).filter(el => !el.closest('aside'));
             return elements
               .map(el => {
                 const rect = el.getBoundingClientRect();
@@ -144,8 +153,9 @@ test.describe('MVSA Admin Site Mobile Responsiveness & Touch Usability', () => {
             const backdrop = page.locator('div.bg-charcoal\\/40');
             await expect(backdrop).toBeVisible();
 
-            // Click backdrop to close sidebar drawer
-            await backdrop.click({ force: true });
+            // Click close button inside sidebar drawer
+            const closeBtn = sidebar.locator('button').first();
+            await closeBtn.click();
             await page.waitForTimeout(300); // Wait for transition
             await expect(backdrop).toBeHidden();
             

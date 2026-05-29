@@ -142,10 +142,66 @@ export default function SettingsPage() {
   const [editVenueRates, setEditVenueRates] = useState({ morning: 0, off_peak: 0, peak: 0, weekend: 0 });
   const [editVenueName, setEditVenueName] = useState('');
 
+  // 7. Homepage Content Settings State
+  const [heroHeadline, setHeroHeadline] = useState('');
+  const [heroSubheading, setHeroSubheading] = useState('');
+  const [heroTextAboveCta, setHeroTextAboveCta] = useState('');
+  const [heroImageUrlContent, setHeroImageUrlContent] = useState('');
+  const [closingCtaHeadline, setClosingCtaHeadline] = useState('');
+  const [instagramHandleContent, setInstagramHandleContent] = useState('');
+  const [tiktokHandleContent, setTiktokHandleContent] = useState('');
+  
+  const [trustCard1Title, setTrustCard1Title] = useState('');
+  const [trustCard1Desc, setTrustCard1Desc] = useState('');
+  const [trustCard2Title, setTrustCard2Title] = useState('');
+  const [trustCard2Desc, setTrustCard2Desc] = useState('');
+  const [trustCard3Title, setTrustCard3Title] = useState('');
+  const [trustCard3Desc, setTrustCard3Desc] = useState('');
+
+  // 8. Programs Content Settings State
+  const [allPrograms, setAllPrograms] = useState<any[]>([]);
+  const [selectedProgId, setSelectedProgId] = useState<number | ''>('');
+  const [progName, setProgName] = useState('');
+  const [progDescription, setProgDescription] = useState('');
+  const [progSchedule, setProgSchedule] = useState('');
+  const [progAgeGroup, setProgAgeGroup] = useState('');
+  const [progPosterUrl, setProgPosterUrl] = useState('');
+  const [progIsActive, setProgIsActive] = useState(true);
+  const [progWhatsappMessage, setProgWhatsappMessage] = useState('');
+  const [progPosterFile, setProgPosterFile] = useState<File | null>(null);
+  
+  const [contentSubTab, setContentSubTab] = useState<'homepage' | 'programs'>('homepage');
+
   // Role permissions checking
   const userRole = (staff?.role as string) || '';
   const isSuperAdmin = userRole === 'super_admin';
   const isAdmin = userRole === 'super_admin' || userRole === 'admin' || userRole === 'boss' || userRole === 'receptionist' || userRole === 'academy_coo';
+
+  // Auto-fill program edit form when program selected
+  useEffect(() => {
+    if (selectedProgId) {
+      const prog = allPrograms.find(p => p.id === Number(selectedProgId));
+      if (prog) {
+        setProgName(prog.name || '');
+        setProgDescription(prog.description || '');
+        setProgSchedule(prog.schedule || '');
+        setProgAgeGroup(prog.age_group || '');
+        setProgPosterUrl(prog.poster_url || '');
+        setProgIsActive(prog.is_active !== false);
+        setProgWhatsappMessage(prog.whatsapp_message || '');
+        setProgPosterFile(null);
+      }
+    } else {
+      setProgName('');
+      setProgDescription('');
+      setProgSchedule('');
+      setProgAgeGroup('');
+      setProgPosterUrl('');
+      setProgIsActive(true);
+      setProgWhatsappMessage('');
+      setProgPosterFile(null);
+    }
+  }, [selectedProgId, allPrograms]);
 
   // Load all settings from Database on mount
   const loadAllSettings = async () => {
@@ -203,6 +259,26 @@ export default function SettingsPage() {
           setLogoUrl(v.logo_url || '');
           setHeroImageUrl(v.hero_image_url || '');
         }
+
+        // Parse homepage content settings
+        const homepageRow = data.find((r: any) => r.key === 'homepage_content');
+        if (homepageRow?.value) {
+          const v = homepageRow.value;
+          setHeroHeadline(v.hero_headline || '');
+          setHeroSubheading(v.hero_subheading || '');
+          setHeroTextAboveCta(v.hero_text_above_cta || '');
+          setHeroImageUrlContent(v.hero_image_url || '');
+          setClosingCtaHeadline(v.closing_cta_headline || '');
+          setInstagramHandleContent(v.instagram || '');
+          setTiktokHandleContent(v.tiktok || '');
+          
+          setTrustCard1Title(v.trust_card_1_title || '');
+          setTrustCard1Desc(v.trust_card_1_desc || '');
+          setTrustCard2Title(v.trust_card_2_title || '');
+          setTrustCard2Desc(v.trust_card_2_desc || '');
+          setTrustCard3Title(v.trust_card_3_title || '');
+          setTrustCard3Desc(v.trust_card_3_desc || '');
+        }
       }
 
       // Load venues
@@ -212,6 +288,15 @@ export default function SettingsPage() {
         .order('id', { ascending: true });
       if (venuesData) {
         setVenues(venuesData as Venue[]);
+      }
+
+      // Load programs for Content Management
+      const { data: programsData } = await supabase
+        .from('programs')
+        .select('*')
+        .order('id', { ascending: true });
+      if (programsData) {
+        setAllPrograms(programsData);
       }
     } catch (err: any) {
       console.error('Error loading settings from DB:', err.message);
@@ -246,6 +331,7 @@ export default function SettingsPage() {
     { id: 'booking', label: 'Booking Rules', icon: Clock, visible: isSuperAdmin },
     { id: 'notification', label: 'SMS & Alerts', icon: Bell, visible: isAdmin },
     { id: 'appearance', label: 'Appearance & Brand', icon: Palette, visible: isSuperAdmin },
+    { id: 'content', label: 'Content Management', icon: Sparkles, visible: isSuperAdmin },
     { id: 'account', label: 'Account & Security', icon: User, visible: true },
   ];
 
@@ -405,6 +491,103 @@ export default function SettingsPage() {
       setTimeout(() => setSaveSuccess(null), 2000);
     } catch (err: any) {
       alert('Error updating account credentials: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Save Homepage dynamic content in site_content table
+  const handleSaveHomepageContent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    setSaveSuccess(null);
+    try {
+      const { error } = await supabase
+        .from('site_content')
+        .upsert({
+          key: 'homepage_content',
+          value: {
+            hero_headline: heroHeadline,
+            hero_subheading: heroSubheading,
+            hero_text_above_cta: heroTextAboveCta,
+            hero_image_url: heroImageUrlContent,
+            closing_cta_headline: closingCtaHeadline,
+            instagram: instagramHandleContent,
+            tiktok: tiktokHandleContent,
+            trust_card_1_title: trustCard1Title,
+            trust_card_1_desc: trustCard1Desc,
+            trust_card_2_title: trustCard2Title,
+            trust_card_2_desc: trustCard2Desc,
+            trust_card_3_title: trustCard3Title,
+            trust_card_3_desc: trustCard3Desc
+          },
+          updated_by: user?.id
+        });
+      if (error) throw error;
+      setSaveSuccess('homepage_content');
+      setTimeout(() => setSaveSuccess(null), 2000);
+    } catch (err: any) {
+      alert('Error saving homepage content: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Save/Update Program records in programs table
+  const handleSaveProgramContent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedProgId) return;
+    setIsSaving(true);
+    setSaveSuccess(null);
+
+    try {
+      let poster_url = progPosterUrl;
+
+      if (progPosterFile) {
+        const fileExt = progPosterFile.name.split('.').pop();
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
+        const filePath = `posters/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('program-assets')
+          .upload(filePath, progPosterFile);
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('program-assets')
+          .getPublicUrl(filePath);
+        
+        poster_url = publicUrl;
+      }
+
+      const { error } = await supabase
+        .from('programs')
+        .update({
+          name: progName,
+          description: progDescription,
+          schedule: progSchedule,
+          age_group: progAgeGroup,
+          poster_url,
+          is_active: progIsActive,
+          whatsapp_message: progWhatsappMessage
+        })
+        .eq('id', selectedProgId);
+
+      if (error) throw error;
+
+      setSaveSuccess('program_content');
+      
+      // Reload programs
+      const { data } = await supabase
+        .from('programs')
+        .select('*')
+        .order('id', { ascending: true });
+      if (data) setAllPrograms(data);
+
+      setTimeout(() => setSaveSuccess(null), 2000);
+    } catch (err: any) {
+      alert('Error updating program content: ' + err.message);
     } finally {
       setIsSaving(false);
     }
@@ -972,7 +1155,296 @@ export default function SettingsPage() {
                 </form>
               )}
 
-              {/* --- SECTION 6: ACCOUNT SECURITY (all roles) --- */}
+              {/* --- SECTION 6: CONTENT MANAGEMENT (super_admin only) --- */}
+              {activeTab === 'content' && isSuperAdmin && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="font-display font-black text-2xl text-white uppercase italic tracking-tight">Public Content Management</h2>
+                    <p className="text-white/40 text-xs mt-0.5 font-medium">Update homepage components and customize active Youth Academy & Fitness program cards.</p>
+                  </div>
+
+                  {/* Sub-tabs switch */}
+                  <div className="flex gap-2 border-b border-white/5 pb-4">
+                    <button
+                      type="button"
+                      onClick={() => setContentSubTab('homepage')}
+                      className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all border ${contentSubTab === 'homepage' ? 'bg-gold/15 border-gold/30 text-gold shadow-gold-sm' : 'bg-transparent border-transparent text-white/50 hover:bg-white/5'}`}
+                    >
+                      Homepage Settings
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setContentSubTab('programs')}
+                      className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all border ${contentSubTab === 'programs' ? 'bg-gold/15 border-gold/30 text-gold shadow-gold-sm' : 'bg-transparent border-transparent text-white/50 hover:bg-white/5'}`}
+                    >
+                      Programs Management
+                    </button>
+                  </div>
+
+                  {/* SUB-TAB A: HOMEPAGE SETTINGS */}
+                  {contentSubTab === 'homepage' && (
+                    <form onSubmit={handleSaveHomepageContent} className="space-y-6 animate-entrance">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Hero Headline</label>
+                          <input
+                            type="text"
+                            required
+                            value={heroHeadline}
+                            onChange={(e) => setHeroHeadline(e.target.value)}
+                            className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-bold"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Hero Image URL</label>
+                          <input
+                            type="text"
+                            required
+                            value={heroImageUrlContent}
+                            onChange={(e) => setHeroImageUrlContent(e.target.value)}
+                            className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-mono font-bold"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Hero Subheading</label>
+                        <textarea
+                          required
+                          rows={2}
+                          value={heroSubheading}
+                          onChange={(e) => setHeroSubheading(e.target.value)}
+                          className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-medium resize-none leading-relaxed"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Text Above CTAs</label>
+                        <input
+                          type="text"
+                          required
+                          value={heroTextAboveCta}
+                          onChange={(e) => setHeroTextAboveCta(e.target.value)}
+                          className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-bold"
+                        />
+                      </div>
+
+                      {/* Trust cards */}
+                      <div className="border-t border-white/5 pt-4 space-y-4">
+                        <span className="text-[10px] font-bold text-gold uppercase tracking-wider block">Trust Cards 1-3 (Dynamic Badges)</span>
+                        <div className="space-y-4">
+                          {[
+                            { label: 'Trust Card 1 Title & Description', title: trustCard1Title, setTitle: setTrustCard1Title, desc: trustCard1Desc, setDesc: setTrustCard1Desc },
+                            { label: 'Trust Card 2 Title & Description', title: trustCard2Title, setTitle: setTrustCard2Title, desc: trustCard2Desc, setDesc: setTrustCard2Desc },
+                            { label: 'Trust Card 3 Title & Description', title: trustCard3Title, setTitle: setTrustCard3Title, desc: trustCard3Desc, setDesc: setTrustCard3Desc }
+                          ].map((tc, idx) => (
+                            <div key={idx} className="bg-white/2 border border-white/5 p-4 rounded-xl space-y-3">
+                              <span className="text-[9px] text-white/40 font-bold uppercase">{tc.label}</span>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <input
+                                  type="text"
+                                  placeholder="Card Title"
+                                  value={tc.title}
+                                  onChange={(e) => tc.setTitle(e.target.value)}
+                                  className="w-full px-3 py-2 rounded-lg border border-white/10 bg-white/5 text-white text-xs font-bold"
+                                />
+                                <input
+                                  type="text"
+                                  placeholder="Card Description"
+                                  value={tc.desc}
+                                  onChange={(e) => tc.setDesc(e.target.value)}
+                                  className="w-full px-3 py-2 rounded-lg border border-white/10 bg-white/5 text-white text-xs"
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5 pt-4 border-t border-white/5">
+                        <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Closing CTA Section Headline</label>
+                        <input
+                          type="text"
+                          required
+                          value={closingCtaHeadline}
+                          onChange={(e) => setClosingCtaHeadline(e.target.value)}
+                          className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-bold"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-4 border-t border-white/5">
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Public Instagram Handle</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. mvsa_turf"
+                            value={instagramHandleContent}
+                            onChange={(e) => setInstagramHandleContent(e.target.value)}
+                            className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-bold"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Public TikTok Handle</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. mvsa_turf"
+                            value={tiktokHandleContent}
+                            onChange={(e) => setTiktokHandleContent(e.target.value)}
+                            className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-bold"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="pt-6 border-t border-white/5 flex justify-between items-center gap-4">
+                        <p className="text-[9px] text-white/30 font-bold uppercase tracking-widest font-mono">
+                          Database: site_content.homepage_content
+                        </p>
+                        <button
+                          type="submit"
+                          disabled={isSaving}
+                          className="px-8 py-3.5 bg-gradient-to-r from-gold to-gold-muted text-forest rounded-xl font-extrabold text-xs tracking-widest uppercase transition-all duration-300 shadow-gold-sm hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 flex items-center gap-2"
+                        >
+                          {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                          {saveSuccess === 'homepage_content' ? 'HOMEPAGE UPDATED!' : 'SAVE HOMEPAGE'}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* SUB-TAB B: PROGRAMS MANAGEMENT */}
+                  {contentSubTab === 'programs' && (
+                    <form onSubmit={handleSaveProgramContent} className="space-y-6 animate-entrance">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-gold uppercase tracking-wider block">Select Program to Modify</label>
+                        <select
+                          value={selectedProgId}
+                          onChange={(e) => setSelectedProgId(e.target.value !== '' ? Number(e.target.value) : '')}
+                          className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white focus:outline-none focus:border-gold font-bold text-sm text-white"
+                        >
+                          <option value="" className="bg-charcoal text-white">-- Select Program Group --</option>
+                          {allPrograms.map(p => (
+                            <option key={p.id} value={p.id.toString()} className="bg-charcoal text-white">{p.name} ({p.type})</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {selectedProgId !== '' && (
+                        <div className="space-y-6 pt-4 border-t border-white/5 animate-entrance">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Program Name</label>
+                              <input
+                                type="text"
+                                required
+                                value={progName}
+                                onChange={(e) => setProgName(e.target.value)}
+                                className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-bold"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Target Age Group</label>
+                              <input
+                                type="text"
+                                required
+                                value={progAgeGroup}
+                                onChange={(e) => setProgAgeGroup(e.target.value)}
+                                className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-bold"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Active Cohort Schedule</label>
+                              <input
+                                type="text"
+                                required
+                                value={progSchedule}
+                                onChange={(e) => setProgSchedule(e.target.value)}
+                                className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-bold"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Status Mode</label>
+                              <div className="flex items-center justify-between py-2 px-4 rounded-xl border border-white/10 bg-white/5 h-[46px]">
+                                <span className="text-xs font-bold text-white">Active Program Group?</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setProgIsActive(!progIsActive)}
+                                  className={`w-10 h-5 rounded-full p-1 transition-all duration-300 ${progIsActive ? 'bg-gold' : 'bg-white/10'}`}
+                                >
+                                  <div className={`w-3 h-3 rounded-full bg-forest transition-all duration-300 ${progIsActive ? 'translate-x-5' : 'translate-x-0'}`} />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Description</label>
+                            <textarea
+                              required
+                              rows={3}
+                              value={progDescription}
+                              onChange={(e) => setProgDescription(e.target.value)}
+                              className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-medium resize-none leading-relaxed"
+                            />
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-gold uppercase tracking-wider">WhatsApp Redirection Pre-filled Message</label>
+                            <textarea
+                              required
+                              rows={2}
+                              value={progWhatsappMessage}
+                              onChange={(e) => setProgWhatsappMessage(e.target.value)}
+                              placeholder="e.g. Hi MVSA 👋 I'm interested in enrolling in..."
+                              className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none text-xs font-medium leading-relaxed"
+                            />
+                            <p className="text-[10px] text-white/30">Prefilled string opened in client WhatsApp when they click "Enroll via WhatsApp" on the public site.</p>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-end pt-4 border-t border-white/5">
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Program Poster URL</label>
+                              <input
+                                type="text"
+                                readOnly
+                                value={progPosterUrl}
+                                className="w-full px-4 py-3 rounded-xl border border-white/5 bg-white/[0.02] text-white/40 text-xs font-mono font-bold cursor-not-allowed"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-bold text-gold uppercase tracking-wider">Upload New Poster Image</label>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => setProgPosterFile(e.target.files?.[0] || null)}
+                                className="w-full px-4 py-2 border border-white/10 bg-white/5 rounded-xl text-xs text-white"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="pt-6 border-t border-white/5 flex justify-between items-center gap-4">
+                            <p className="text-[9px] text-white/30 font-bold uppercase tracking-widest font-mono">
+                              Table: public.programs
+                            </p>
+                            <button
+                              type="submit"
+                              disabled={isSaving}
+                              className="px-8 py-3.5 bg-gradient-to-r from-gold to-gold-muted text-forest rounded-xl font-extrabold text-xs tracking-widest uppercase transition-all duration-300 shadow-gold-sm hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 flex items-center gap-2"
+                            >
+                              {isSaving ? <Loader2 className="w-4 h-4 animate-spin font-display" /> : <Save className="w-4 h-4" />}
+                              {saveSuccess === 'program_content' ? 'PROGRAM SAVED!' : 'UPDATE PROGRAM'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </form>
+                  )}
+                </div>
+              )}
+
+              {/* --- SECTION 7: ACCOUNT SECURITY (all roles) --- */}
               {activeTab === 'account' && (
                 <form onSubmit={handleSaveAccount} className="space-y-6">
                   <div>

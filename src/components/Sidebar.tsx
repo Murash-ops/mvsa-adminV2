@@ -27,30 +27,30 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean, onClose: () => v
     {
       title: 'Core',
       items: [
-        { name: 'Dashboard', icon: LayoutDashboard, href: '/', roles: ['super_admin', 'admin', 'coach'] },
+        { name: 'Dashboard', icon: LayoutDashboard, href: '/', roles: ['super_admin', 'admin', 'boss', 'academy_coo', 'receptionist', 'coach', 'instructor'] },
       ]
     },
     {
       title: 'Venue Management',
       items: [
-        { name: 'Bookings', icon: CalendarDays, href: '/bookings', roles: ['super_admin', 'admin'], streamScope: ['all', 'stream_1'] },
-        { name: 'Walk-ins', icon: ClipboardList, href: '/walkins', roles: ['super_admin', 'admin'], streamScope: ['all', 'stream_1'] },
+        { name: 'Bookings', icon: CalendarDays, href: '/bookings', roles: ['super_admin', 'admin', 'boss', 'receptionist'], streamScope: ['all', 'stream_1'] },
+        { name: 'Walk-ins', icon: ClipboardList, href: '/walkins', roles: ['super_admin', 'admin', 'boss', 'receptionist'], streamScope: ['all', 'stream_1'] },
         { name: 'Venues', icon: MapPin, href: '/venues', roles: ['super_admin'] },
       ]
     },
     {
       title: 'Academy Operations',
       items: [
-        { name: 'Academy Operations', icon: Trophy, href: '/academy-operations', roles: ['super_admin', 'admin'], streamScope: ['all', 'stream_2'] },
-        { name: 'Programs', icon: ShieldCheck, href: '/programs', roles: ['super_admin', 'admin'], streamScope: ['all', 'stream_2'] },
-        { name: 'Coach Portal', icon: Trophy, href: '/instructor', roles: ['super_admin', 'coach'] },
+        { name: 'Academy Operations', icon: Trophy, href: '/academy-operations', roles: ['super_admin', 'admin', 'academy_coo'], streamScope: ['all', 'stream_2'] },
+        { name: 'Programs', icon: ShieldCheck, href: '/programs', roles: ['super_admin', 'admin', 'academy_coo'], streamScope: ['all', 'stream_2'] },
+        { name: 'Coach Portal', icon: Trophy, href: '/instructor', roles: ['super_admin', 'coach', 'instructor'] },
       ]
     },
     {
       title: 'Finance & Comms',
       items: [
-        { name: 'Expenses', icon: Receipt, href: '/expenses', roles: ['super_admin', 'admin'], streamScope: ['all', 'stream_1', 'stream_2'] },
-        { name: 'SMS Alerts', icon: MessageSquare, href: '/notifications', roles: ['super_admin', 'admin'] },
+        { name: 'Expenses', icon: Receipt, href: '/expenses', roles: ['super_admin', 'admin', 'boss', 'academy_coo'], streamScope: ['all', 'stream_1', 'stream_2'] },
+        { name: 'SMS Alerts', icon: MessageSquare, href: '/notifications', roles: ['super_admin', 'admin', 'boss', 'academy_coo'] },
       ]
     },
     {
@@ -69,8 +69,8 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean, onClose: () => v
         // 1. Role match check
         if (!item.roles.includes(staff.role)) return false;
         
-        // 2. Stream scope check for admins
-        if (staff.role === 'admin' && 'streamScope' in item && item.streamScope) {
+        // 2. Stream scope check for staff
+        if ((staff.role === 'admin' || staff.role === 'receptionist' || staff.role === 'academy_coo') && 'streamScope' in item && item.streamScope) {
           if (staff.stream_scope && staff.stream_scope !== 'all' && !item.streamScope.includes(staff.stream_scope)) {
             return false;
           }
@@ -86,13 +86,21 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean, onClose: () => v
   const roleStyles = {
     super_admin: 'bg-gold/15 text-gold border-gold/30',
     admin: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
-    coach: 'bg-violet-500/15 text-violet-400 border-violet-500/30'
+    boss: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+    academy_coo: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
+    receptionist: 'bg-teal-500/15 text-teal-400 border-teal-500/30',
+    coach: 'bg-violet-500/15 text-violet-400 border-violet-500/30',
+    instructor: 'bg-purple-500/15 text-purple-400 border-purple-500/30'
   };
 
   const roleLabels = {
     super_admin: 'Super Admin',
     admin: 'Administrator',
-    coach: 'Academy Coach'
+    boss: 'Boss / Proprietor',
+    academy_coo: 'Academy COO',
+    receptionist: 'Receptionist',
+    coach: 'Academy Coach',
+    instructor: 'Academy Instructor'
   };
 
   return (
@@ -112,7 +120,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean, onClose: () => v
         {/* Mobile Close Button */}
         <button 
           onClick={onClose}
-          className="lg:hidden absolute top-6 right-6 p-2 hover:bg-white/10 rounded-xl transition-colors"
+          className="lg:hidden absolute top-6 right-6 p-2 hover:bg-white/10 rounded-xl transition-colors z-50"
         >
           <X className="w-6 h-6" />
         </button>
