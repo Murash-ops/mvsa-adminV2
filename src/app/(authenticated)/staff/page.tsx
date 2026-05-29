@@ -514,8 +514,9 @@ export default function StaffPage() {
                         onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value as Staff['role'] })}
                         className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white focus:bg-white/10 focus:border-gold/30 focus:outline-none font-bold text-sm appearance-none bg-forest-dark"
                       >
+                        <option value="super_admin">Super Admin</option>
                         <option value="admin">Administrator</option>
-                        <option value="coach">Academy Coach</option>
+                        <option value="coach">Coach</option>
                       </select>
                       <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-white/50">
                         <ChevronRight className="w-4 h-4 rotate-90" />
