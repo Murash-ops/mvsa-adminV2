@@ -45,6 +45,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean, onClose: () => v
       title: 'Academy Operations',
       items: [
         { name: 'Academy Operations', icon: Trophy, href: '/academy-operations', roles: ['super_admin', 'academy_coo'], streamScope: ['all', 'stream_2'] },
+        { name: 'Assessments', icon: ClipboardList, href: '/academy-operations/assessments', roles: ['super_admin', 'academy_coo'], streamScope: ['all', 'stream_2'] },
         { name: 'Programs', icon: ShieldCheck, href: '/programs', roles: ['super_admin', 'academy_coo'], streamScope: ['all', 'stream_2'] },
         { name: 'Coach Portal', icon: Trophy, href: '/instructor', roles: ['super_admin', 'coach', 'instructor'] },
       ]

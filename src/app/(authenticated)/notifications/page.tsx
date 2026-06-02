@@ -31,7 +31,10 @@ export default function NotificationsBroadcastPage() {
   // Ledger Search & Filter State
   const [ledgerSearch, setLedgerSearch] = useState('');
   const [ledgerStatusFilter, setLedgerStatusFilter] = useState('all');
-  const [ledgerDateFilter, setLedgerDateFilter] = useState('');
+  const [ledgerStartDateFilter, setLedgerStartDateFilter] = useState('');
+  const [ledgerEndDateFilter, setLedgerEndDateFilter] = useState('');
+  const [ledgerSentByFilter, setLedgerSentByFilter] = useState('all');
+  const [staffMembers, setStaffMembers] = useState<any[]>([]);
 
   // Broadcast Form State
   const [segment, setSegment] = useState<'all' | 'bookings_date' | 'program'>('all');
@@ -79,6 +82,16 @@ export default function NotificationsBroadcastPage() {
       
       if (pError) throw pError;
       setPrograms(pData || []);
+
+      // 3. Fetch Staff for Sent By filter
+      const { data: sData, error: sError } = await supabase
+        .from('staff')
+        .select('id, name')
+        .order('name');
+      
+      if (!sError && sData) {
+        setStaffMembers(sData);
+      }
     } catch (err: any) {
       console.error('Error fetching initial data:', err);
     } finally {
@@ -264,15 +277,22 @@ export default function NotificationsBroadcastPage() {
     const matchesStatus = ledgerStatusFilter === 'all' || notif.status === ledgerStatusFilter;
 
     let matchesDate = true;
-    if (ledgerDateFilter) {
-      const notifDate = notif.created_at || notif.sent_at;
-      if (notifDate) {
-        const d1 = new Date(notifDate).toISOString().split('T')[0];
-        matchesDate = d1 === ledgerDateFilter;
+    const notifDateStr = notif.created_at || notif.sent_at;
+    if (notifDateStr) {
+      const notifDate = new Date(notifDateStr).toISOString().split('T')[0];
+      if (ledgerStartDateFilter) {
+        matchesDate = matchesDate && notifDate >= ledgerStartDateFilter;
       }
+      if (ledgerEndDateFilter) {
+        matchesDate = matchesDate && notifDate <= ledgerEndDateFilter;
+      }
+    } else if (ledgerStartDateFilter || ledgerEndDateFilter) {
+      matchesDate = false;
     }
 
-    return matchesSearch && matchesStatus && matchesDate;
+    const matchesSentBy = ledgerSentByFilter === 'all' || notif.sent_by === ledgerSentByFilter;
+
+    return matchesSearch && matchesStatus && matchesDate && matchesSentBy;
   });
 
   return (
@@ -506,12 +526,40 @@ export default function NotificationsBroadcastPage() {
                     <option value="failed" className="bg-forest-dark text-white">Failed</option>
                   </select>
                 </div>
-                <input
-                  type="date"
-                  value={ledgerDateFilter}
-                  onChange={(e) => setLedgerDateFilter(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-white/5 text-white text-xs border border-white/10 focus:outline-none focus:border-gold/30 font-bold"
-                />
+                <div className="relative">
+                  <select
+                    value={ledgerSentByFilter}
+                    onChange={(e) => setLedgerSentByFilter(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white/5 text-white text-xs border border-white/10 focus:outline-none focus:border-gold/30 uppercase tracking-wider font-bold appearance-none bg-forest-dark"
+                  >
+                    <option value="all" className="bg-forest-dark text-white">Sent By: All</option>
+                    {staffMembers.map(member => (
+                      <option key={member.id} value={member.id} className="bg-forest-dark text-white">
+                        {member.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <span className="text-[9px] text-white/40 font-bold uppercase tracking-widest pl-1">Start Date</span>
+                  <input
+                    type="date"
+                    value={ledgerStartDateFilter}
+                    onChange={(e) => setLedgerStartDateFilter(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white/5 text-white text-xs border border-white/10 focus:outline-none focus:border-gold/30 font-bold"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[9px] text-white/40 font-bold uppercase tracking-widest pl-1">End Date</span>
+                  <input
+                    type="date"
+                    value={ledgerEndDateFilter}
+                    onChange={(e) => setLedgerEndDateFilter(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white/5 text-white text-xs border border-white/10 focus:outline-none focus:border-gold/30 font-bold"
+                  />
+                </div>
               </div>
             </div>
 
