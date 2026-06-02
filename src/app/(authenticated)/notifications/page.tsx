@@ -14,7 +14,8 @@ import {
   Calendar,
   Layers,
   ChevronRight,
-  RefreshCw
+  RefreshCw,
+  Search
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthContext';
 
@@ -26,6 +27,11 @@ export default function NotificationsBroadcastPage() {
   const [isLoadingLedger, setIsLoadingLedger] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [isAuditing, setIsAuditing] = useState(false);
+  
+  // Ledger Search & Filter State
+  const [ledgerSearch, setLedgerSearch] = useState('');
+  const [ledgerStatusFilter, setLedgerStatusFilter] = useState('all');
+  const [ledgerDateFilter, setLedgerDateFilter] = useState('');
 
   // Broadcast Form State
   const [segment, setSegment] = useState<'all' | 'bookings_date' | 'program'>('all');
@@ -250,6 +256,25 @@ export default function NotificationsBroadcastPage() {
     setIsAuditing(false);
   };
 
+  const filteredNotifications = notifications.filter(notif => {
+    const matchesSearch = ledgerSearch.trim() === '' || 
+      notif.recipient_phone?.toLowerCase().includes(ledgerSearch.toLowerCase()) ||
+      notif.message?.toLowerCase().includes(ledgerSearch.toLowerCase());
+
+    const matchesStatus = ledgerStatusFilter === 'all' || notif.status === ledgerStatusFilter;
+
+    let matchesDate = true;
+    if (ledgerDateFilter) {
+      const notifDate = notif.created_at || notif.sent_at;
+      if (notifDate) {
+        const d1 = new Date(notifDate).toISOString().split('T')[0];
+        matchesDate = d1 === ledgerDateFilter;
+      }
+    }
+
+    return matchesSearch && matchesStatus && matchesDate;
+  });
+
   return (
     <div className="flex flex-col flex-1 p-6 lg:p-10 animate-entrance min-h-full">
       <header className="mb-10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 text-left">
@@ -447,6 +472,7 @@ export default function NotificationsBroadcastPage() {
                 </div>
               </div>
               <button
+                type="button"
                 onClick={handleRefreshLedger}
                 disabled={isAuditing}
                 className="p-2 border border-white/10 hover:border-gold/30 hover:bg-white/5 rounded-xl transition-colors text-white"
@@ -456,17 +482,50 @@ export default function NotificationsBroadcastPage() {
               </button>
             </div>
 
+            {/* Ledger Filters */}
+            <div className="p-6 bg-white/[0.01] border-b border-white/5 space-y-3 text-left">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+                <input
+                  type="text"
+                  placeholder="Search phone or message..."
+                  value={ledgerSearch}
+                  onChange={(e) => setLedgerSearch(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 rounded-xl border border-white/10 bg-white/5 text-white placeholder-white/30 text-xs focus:outline-none focus:border-gold/30 font-medium"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="relative">
+                  <select
+                    value={ledgerStatusFilter}
+                    onChange={(e) => setLedgerStatusFilter(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white/5 text-white text-xs border border-white/10 focus:outline-none focus:border-gold/30 uppercase tracking-wider font-bold appearance-none bg-forest-dark"
+                  >
+                    <option value="all" className="bg-forest-dark text-white">All Statuses</option>
+                    <option value="sent" className="bg-forest-dark text-white">Sent</option>
+                    <option value="failed" className="bg-forest-dark text-white">Failed</option>
+                  </select>
+                </div>
+                <input
+                  type="date"
+                  value={ledgerDateFilter}
+                  onChange={(e) => setLedgerDateFilter(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-white/5 text-white text-xs border border-white/10 focus:outline-none focus:border-gold/30 font-bold"
+                />
+              </div>
+            </div>
+
             <div className="p-8 text-left">
               {isLoadingLedger ? (
                 <div className="flex flex-col items-center justify-center py-12 gap-4">
                   <Loader2 className="w-6 h-6 text-gold animate-spin" />
                   <p className="text-[10px] text-white/40 uppercase tracking-widest font-bold">Syncing ledger records...</p>
                 </div>
-              ) : notifications.length === 0 ? (
-                <p className="text-white/40 text-center py-8 text-xs font-medium">No SMS history logged in public.notifications.</p>
+              ) : filteredNotifications.length === 0 ? (
+                <p className="text-white/40 text-center py-8 text-xs font-medium">No matching SMS history found.</p>
               ) : (
                 <div className="space-y-4 max-h-[80vh] overflow-y-auto pr-2 custom-scrollbar">
-                  {notifications.map(notif => {
+                  {filteredNotifications.map(notif => {
                     const dateFormatted = notif.created_at
                       ? new Date(notif.created_at).toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })
                       : '';

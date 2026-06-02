@@ -127,7 +127,14 @@ export default function ReceptionistDashboard({
           ======================================================== */}
       <section className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-8 bg-gradient-to-r from-gold/15 to-transparent border border-gold/25 rounded-[2rem] shadow-pitch text-white gap-6">
         <div className="space-y-1">
-          <span className="text-[10px] font-black uppercase text-gold tracking-widest">Rapid Booking Desk</span>
+          <span className="text-[10px] font-black uppercase text-gold tracking-widest flex items-center gap-2">
+            Rapid Booking Desk
+            <span className="w-px h-3 bg-white/15" />
+            <span className="flex items-center gap-1.5 text-[9px] text-emerald-400 font-bold tracking-widest animate-pulse">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)] animate-ping" />
+              LIVE UPDATES
+            </span>
+          </span>
           <h2 className="text-xl font-black font-display text-white uppercase italic">Active Shift Portal</h2>
           <p className="text-xs text-white/50 leading-relaxed font-medium">
             Manage field allocations, log walk-ins immediately in under 5 taps, and verify WhatsApp queue deposits.

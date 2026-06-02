@@ -43,6 +43,16 @@ export default function BookingsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isQuickLogOpen, setIsQuickLogOpen] = useState(false);
 
+  // Bulk action state (Priority 2)
+  const [selectedBookingIds, setSelectedBookingIds] = useState<number[]>([]);
+  const [isBulkSmsOpen, setIsBulkSmsOpen] = useState(false);
+  const [bulkSmsText, setBulkSmsText] = useState('');
+  const [isBulkSubmitting, setIsBulkSubmitting] = useState(false);
+
+  // Search & Status filters (Priority 5)
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'confirmed' | 'pending' | 'cancelled'>('all');
+
   // Active contextual menu state
   const [activeMenuBookingId, setActiveMenuBookingId] = useState<number | null>(null);
 
@@ -155,6 +165,176 @@ export default function BookingsPage() {
       .select('*, venues(id, name)')
       .order('created_at', { ascending: false });
     if (data) setBookings(data);
+  };
+
+  // Load search from URL params on mount/load
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const searchParam = params.get('search');
+      if (searchParam) {
+        setSearchQuery(searchParam);
+      }
+    }
+  }, [bookings.length]);
+
+  const toggleSelectBooking = (id: number) => {
+    setSelectedBookingIds(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAllBookings = (visibleBookings: any[]) => {
+    const visibleIds = visibleBookings.map(b => b.id);
+    const allSelected = visibleIds.every(id => selectedBookingIds.includes(id));
+    if (allSelected) {
+      setSelectedBookingIds(prev => prev.filter(id => !visibleIds.includes(id)));
+    } else {
+      setSelectedBookingIds(prev => Array.from(new Set([...prev, ...visibleIds])));
+    }
+  };
+
+  const handleBulkConfirmPayment = async () => {
+    if (selectedBookingIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to confirm payment for ${selectedBookingIds.length} selected bookings?`)) return;
+
+    setIsBulkSubmitting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Your session is unauthenticated or expired. Please re-login.');
+      }
+
+      const selectedBookings = bookings.filter(b => selectedBookingIds.includes(b.id));
+      const toConfirm = selectedBookings.filter(b => b.status !== 'confirmed');
+
+      if (toConfirm.length === 0) {
+        alert('All selected bookings are already confirmed.');
+        setSelectedBookingIds([]);
+        setIsBulkSubmitting(false);
+        return;
+      }
+
+      // A. Bulk update bookings
+      const { error: updateError } = await supabase
+        .from('bookings')
+        .update({ status: 'confirmed', balance: 0 })
+        .in('id', toConfirm.map(b => b.id));
+
+      if (updateError) throw updateError;
+
+      // B. Bulk insert payments
+      const paymentsToInsert = toConfirm.map(b => ({
+        booking_id: b.id,
+        amount: b.balance > 0 ? b.balance : b.deposit_amount,
+        payment_method: 'mpesa',
+        stream: 'venues',
+        status: 'completed',
+        mpesa_receipt: 'BULK-' + Math.floor(Math.random() * 1000000)
+      }));
+
+      const { error: paymentError } = await supabase
+        .from('payments')
+        .insert(paymentsToInsert);
+
+      if (paymentError) throw paymentError;
+
+      alert(`${toConfirm.length} bookings confirmed successfully.`);
+      setSelectedBookingIds([]);
+      await refreshBookings();
+    } catch (err: any) {
+      alert(`Bulk confirmation error: ${err.message}`);
+    } finally {
+      setIsBulkSubmitting(false);
+    }
+  };
+
+  const handleBulkCancel = async () => {
+    if (selectedBookingIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to cancel ${selectedBookingIds.length} selected bookings? This will release their slots.`)) return;
+
+    setIsBulkSubmitting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Your session is unauthenticated or expired. Please re-login.');
+      }
+
+      const selectedBookings = bookings.filter(b => selectedBookingIds.includes(b.id));
+      const toCancel = selectedBookings.filter(b => b.status !== 'cancelled');
+
+      if (toCancel.length === 0) {
+        alert('All selected bookings are already cancelled.');
+        setSelectedBookingIds([]);
+        setIsBulkSubmitting(false);
+        return;
+      }
+
+      // A. Bulk update bookings
+      const { error: updateError } = await supabase
+        .from('bookings')
+        .update({ status: 'cancelled' })
+        .in('id', toCancel.map(b => b.id));
+
+      if (updateError) throw updateError;
+
+      // B. Bulk release slots
+      const allSlotIds = toCancel.flatMap(b => b.slot_ids || []);
+      if (allSlotIds.length > 0) {
+        const { error: slotsError } = await supabase
+          .from('time_slots')
+          .update({ status: 'available' })
+          .in('id', allSlotIds);
+        if (slotsError) throw slotsError;
+      }
+
+      alert(`${toCancel.length} bookings cancelled successfully.`);
+      setSelectedBookingIds([]);
+      await refreshBookings();
+    } catch (err: any) {
+      alert(`Bulk cancellation error: ${err.message}`);
+    } finally {
+      setIsBulkSubmitting(false);
+    }
+  };
+
+  const handleBulkSendSms = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (selectedBookingIds.length === 0 || !bulkSmsText.trim()) return;
+
+    setIsBulkSubmitting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Your session is unauthenticated or expired. Please re-login.');
+      }
+
+      const selectedBookings = bookings.filter(b => selectedBookingIds.includes(b.id));
+      
+      const smsToInsert = selectedBookings.map(b => ({
+        recipient_phone: b.client_phone,
+        message: bulkSmsText,
+        type: 'client_confirmation',
+        status: 'pending',
+        booking_id: b.id,
+        sent_by: staff?.id
+      }));
+
+      const { error: smsError } = await supabase
+        .from('notifications')
+        .insert(smsToInsert);
+
+      if (smsError) throw smsError;
+
+      alert(`SMS alerts queued for ${selectedBookings.length} clients.`);
+      setIsBulkSmsOpen(false);
+      setBulkSmsText('');
+      setSelectedBookingIds([]);
+    } catch (err: any) {
+      alert(`Bulk SMS dispatch error: ${err.message}`);
+    } finally {
+      setIsBulkSubmitting(false);
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -479,6 +659,17 @@ export default function BookingsPage() {
   const discountStats = getDiscountReportStats();
   const discountedBookingsList = bookings.filter(b => b.status !== 'cancelled' && Number(b.discount_amount) > 0);
 
+  // Filtered Bookings (Priority 5)
+  const filteredBookings = bookings.filter(b => {
+    const searchLower = searchQuery.toLowerCase().trim();
+    const nameMatch = b.client_name?.toLowerCase().includes(searchLower);
+    const phoneMatch = b.client_phone?.toLowerCase().includes(searchLower);
+    const refMatch = b.ref_code?.toLowerCase().includes(searchLower);
+    const queryMatch = searchLower ? (nameMatch || phoneMatch || refMatch) : true;
+    const statusMatch = statusFilter === 'all' ? true : b.status === statusFilter;
+    return queryMatch && statusMatch;
+  });
+
   return (
     <div className="flex flex-col flex-1 p-6 lg:p-10 animate-entrance min-h-full">
       
@@ -548,44 +739,100 @@ export default function BookingsPage() {
           TAB 1: BOOKINGS LEDGER
           ========================================================= */}
       {activeTab === 'bookings' ? (
-        <div className="relative group">
-          <div className="absolute -inset-1 bg-gradient-to-r from-gold/10 to-gold-muted/5 rounded-[2.5rem] blur opacity-25 group-hover:opacity-40 transition duration-1000 group-hover:duration-200"></div>
-          
-          <div className="relative glass rounded-[2rem] overflow-hidden shadow-pitch">
-            <div className="scrollbar-hide overflow-x-auto">
-              <table className="w-full text-left border-collapse min-w-[900px]">
-                <thead>
-                  <tr className="bg-white/[0.02] border-b border-white/5">
-                    <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Client Details</th>
-                    <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Venue</th>
-                    <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Financials</th>
-                    <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Status</th>
-                    <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Timestamp</th>
-                    <th className="px-8 py-5"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5 text-white">
-                  {isLoading ? (
-                    [1, 2, 3, 4].map(i => (
-                      <tr key={i} className="animate-pulse">
-                        <td colSpan={6} className="px-8 py-8">
-                          <div className="h-12 bg-white/5 rounded-2xl w-full"></div>
+        <div className="space-y-6">
+          {/* Filters Bar (Priority 5) */}
+          <div className="flex flex-col md:flex-row items-center gap-4 justify-between bg-white/[0.02] p-4 rounded-3xl border border-white/5">
+            <div className="relative w-full md:w-96">
+              <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-white/40" />
+              <input 
+                type="text" 
+                placeholder="Search by client name, phone or reference code..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-11 pr-4 py-3 bg-white/5 border border-white/10 rounded-2xl text-xs text-white placeholder-white/40 focus:outline-none focus:border-gold/30 focus:ring-1 focus:ring-gold/30 focus:bg-white/10 transition-all"
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition-colors">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex bg-white/5 p-1 rounded-2xl border border-white/10 w-full md:w-auto overflow-x-auto scrollbar-hide">
+              {(['all', 'pending', 'confirmed', 'cancelled'] as const).map((status) => (
+                <button
+                  key={status}
+                  onClick={() => setStatusFilter(status)}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${
+                    statusFilter === status 
+                      ? 'bg-white text-forest shadow-sm' 
+                      : 'text-white/60 hover:text-white'
+                  }`}
+                >
+                  {status}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="relative group">
+            <div className="absolute -inset-1 bg-gradient-to-r from-gold/10 to-gold-muted/5 rounded-[2.5rem] blur opacity-25 group-hover:opacity-40 transition duration-1000 group-hover:duration-200"></div>
+            
+            <div className="relative glass rounded-[2rem] overflow-hidden shadow-pitch">
+              <div className="scrollbar-hide overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-[900px]">
+                  <thead>
+                    <tr className="bg-white/[0.02] border-b border-white/5">
+                      {hasFullAccess && (
+                        <th className="pl-8 py-5 w-12 text-center">
+                          <input 
+                            type="checkbox" 
+                            checked={filteredBookings.length > 0 && filteredBookings.every(b => selectedBookingIds.includes(b.id))}
+                            onChange={() => toggleSelectAllBookings(filteredBookings)}
+                            className="w-4 h-4 bg-white/5 border border-white/10 rounded focus:ring-gold text-gold accent-gold cursor-pointer"
+                          />
+                        </th>
+                      )}
+                      <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Client Details</th>
+                      <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Venue</th>
+                      <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Financials</th>
+                      <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Status</th>
+                      <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Timestamp</th>
+                      <th className="px-8 py-5"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5 text-white">
+                    {isLoading ? (
+                      [1, 2, 3, 4].map(i => (
+                        <tr key={i} className="animate-pulse">
+                          <td colSpan={hasFullAccess ? 7 : 6} className="px-8 py-8">
+                            <div className="h-12 bg-white/5 rounded-2xl w-full"></div>
+                          </td>
+                        </tr>
+                      ))
+                    ) : filteredBookings.length === 0 ? (
+                      <tr>
+                        <td colSpan={hasFullAccess ? 7 : 6} className="px-8 py-32 text-center">
+                          <div className="flex flex-col items-center gap-4 opacity-40">
+                            <Clock className="w-12 h-12 text-gold" />
+                            <p className="font-display font-bold text-xl text-white">No records found matching filters.</p>
+                          </div>
                         </td>
                       </tr>
-                    ))
-                  ) : bookings.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="px-8 py-32 text-center">
-                        <div className="flex flex-col items-center gap-4 opacity-40">
-                          <Clock className="w-12 h-12 text-gold" />
-                          <p className="font-display font-bold text-xl text-white">No records found yet.</p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    bookings.map((booking) => (
-                      <tr key={booking.id} className="hover:bg-white/[0.02] transition-all duration-300 group/row">
-                        <td className="px-8 py-6">
+                    ) : (
+                      filteredBookings.map((booking) => (
+                        <tr key={booking.id} className="hover:bg-white/[0.02] transition-all duration-300 group/row">
+                          {hasFullAccess && (
+                            <td className="pl-8 py-6 w-12 text-center">
+                              <input 
+                                type="checkbox" 
+                                checked={selectedBookingIds.includes(booking.id)}
+                                onChange={() => toggleSelectBooking(booking.id)}
+                                className="w-4 h-4 bg-white/5 border border-white/10 rounded focus:ring-gold text-gold accent-gold cursor-pointer"
+                              />
+                            </td>
+                          )}
+                          <td className="px-8 py-6">
                           <div className="font-bold text-white text-lg tracking-tight group-hover/row:text-gold transition-colors">{booking.client_name}</div>
                           <div className="text-xs text-charcoal-light/60 font-mono tracking-wider mt-0.5">{booking.client_phone}</div>
                           {booking.checkout_request_id && (
@@ -751,6 +998,7 @@ export default function BookingsPage() {
             </div>
           </div>
         </div>
+      </div>
       ) : (
         /* =========================================================
            TAB 2: DISCOUNTS REPORT (super_admin only - Correction 2)
@@ -1252,6 +1500,125 @@ export default function BookingsPage() {
                   className="flex-1 py-3 bg-forest hover:bg-forest-dark text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-lg shadow-forest/20 transition-all active:scale-95"
                 >
                   {isBalanceSubmitting ? 'Logging...' : 'Log Payment'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Floating Bulk Action Toolbar (Priority 2) */}
+      {selectedBookingIds.length > 0 && hasFullAccess && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-forest-dark/90 backdrop-blur-md border border-white/10 px-6 py-4 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-[90] flex items-center gap-6 animate-slide-up">
+          <div className="flex flex-col">
+            <span className="text-xs font-black uppercase text-gold tracking-widest">{selectedBookingIds.length} Selected</span>
+            <span className="text-[10px] text-white/40 font-bold uppercase tracking-tight">Bulk reservation actions</span>
+          </div>
+
+          <div className="w-px h-8 bg-white/10" />
+
+          <div className="flex gap-2">
+            <button
+              onClick={handleBulkConfirmPayment}
+              disabled={isBulkSubmitting}
+              className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all disabled:opacity-50"
+            >
+              <CheckCircle className="w-3.5 h-3.5" />
+              Confirm Paid
+            </button>
+            <button
+              onClick={handleBulkCancel}
+              disabled={isBulkSubmitting}
+              className="flex items-center gap-2 px-4 py-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all disabled:opacity-50"
+            >
+              <XCircle className="w-3.5 h-3.5" />
+              Cancel All
+            </button>
+            <button
+              onClick={() => setIsBulkSmsOpen(true)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all"
+            >
+              <Send className="w-3.5 h-3.5" />
+              Send SMS
+            </button>
+          </div>
+
+          <div className="w-px h-8 bg-white/10" />
+
+          <button 
+            onClick={() => setSelectedBookingIds([])}
+            className="text-[10px] font-black uppercase text-white/40 hover:text-white transition-colors"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
+      {/* --- MODAL 4: BULK SMS COMPOSER (Priority 2) --- */}
+      {isBulkSmsOpen && selectedBookingIds.length > 0 && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setIsBulkSmsOpen(false)} />
+          <div className="relative bg-charcoal border border-white/10 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
+              <div>
+                <h2 className="text-xl font-display font-black tracking-tight text-white uppercase flex items-center gap-2">
+                  <Send className="w-5 h-5 text-purple-400" /> Compose Bulk SMS
+                </h2>
+                <p className="text-white/40 text-xs mt-0.5">Sending alert notifications to {selectedBookingIds.length} clients</p>
+              </div>
+              <button onClick={() => setIsBulkSmsOpen(false)} className="p-2 hover:bg-white/5 rounded-full transition-colors text-white/40 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleBulkSendSms} className="p-6 space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold text-gold uppercase tracking-wider mb-1.5">SMS Body Message</label>
+                <textarea 
+                  required
+                  rows={4}
+                  value={bulkSmsText}
+                  onChange={(e) => setBulkSmsText(e.target.value)}
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-xs text-white placeholder-white/30 focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold transition-all resize-none"
+                  placeholder="Enter message body e.g. Dear client, your reserved slot booking at MVSA Arena has been successfully updated. Thank you!"
+                />
+                <span className="text-[10px] text-white/30 block mt-1">Characters: {bulkSmsText.length} | SMS count estimation: {Math.ceil(bulkSmsText.length / 160)}</span>
+              </div>
+
+              {/* Templates */}
+              <div className="space-y-2">
+                <span className="text-[9px] font-bold text-gold uppercase tracking-widest block">Quick Templates</span>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { label: 'Booking Confirmed', text: 'Dear client, your booking at MVSA has been confirmed successfully. We look forward to seeing you.' },
+                    { label: 'Pending Payment', text: 'Dear client, please complete the balance payment for your slot reservation at MVSA to prevent hold release.' },
+                    { label: 'Slot Rescheduled', text: 'Dear client, your reserved time slot at MVSA has been rescheduled. Check details in your portal.' }
+                  ].map((tpl, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setBulkSmsText(tpl.text)}
+                      className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 rounded-lg text-[10px] font-bold text-white/60 hover:text-white transition-all"
+                    >
+                      {tpl.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                <button 
+                  type="button" 
+                  onClick={() => setIsBulkSmsOpen(false)}
+                  className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  disabled={isBulkSubmitting || !bulkSmsText.trim()}
+                  className="flex-1 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-lg shadow-purple-600/20 transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {isBulkSubmitting ? 'Sending...' : 'Dispatch SMS'}
                 </button>
               </div>
             </form>

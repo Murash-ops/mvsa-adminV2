@@ -196,9 +196,14 @@ export default function AcademyCOODashboard({
           ======================================================== */}
       <section className="bg-card border border-white/5 p-8 rounded-[2rem] shadow-pitch text-white">
         <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-2">
-            <Users className="w-5 h-5 text-gold animate-pulse" />
+          <div className="flex items-center gap-2.5">
+            <Users className="w-5 h-5 text-gold" />
             <h2 className="text-xl font-bold font-display text-white italic uppercase tracking-tight">Pending Intake Queue</h2>
+            <span className="w-px h-5 bg-white/10" />
+            <span className="flex items-center gap-1.5 text-[9px] text-emerald-400 font-bold tracking-widest animate-pulse">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)] animate-ping" />
+              LIVE
+            </span>
           </div>
           <span className="px-3.5 py-1.5 rounded-xl bg-gold/10 border border-gold/25 text-[10px] font-black uppercase text-gold tracking-widest">
             {pendingEnrollments.length} Pending Actions

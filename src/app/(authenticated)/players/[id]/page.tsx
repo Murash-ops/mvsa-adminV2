@@ -59,6 +59,12 @@ export default function PlayerProfilePage() {
   const [attentionFlag, setAttentionFlag] = useState<'none' | 'new_player' | 'concern' | 'urgent'>('none');
   const [personalNote, setPersonalNote] = useState('');
   const [focusAreas, setFocusAreas] = useState('');
+
+  // Historical Assessment list filters
+  const [assessFilterCoach, setAssessFilterCoach] = useState('all');
+  const [assessFilterFlag, setAssessFilterFlag] = useState('all');
+  const [assessFilterDate, setAssessFilterDate] = useState('');
+  const [expandedAssessId, setExpandedAssessId] = useState<number | null>(null);
   
   // Rating states (1-5 scale)
   const [techRatings, setTechRatings] = useState<Record<string, number>>({});
@@ -187,6 +193,26 @@ export default function PlayerProfilePage() {
       fetchData();
     }
   }, [staff, playerId]);
+
+  // Assessment List Filters
+  const filteredAssessments = assessments.filter(ass => {
+    const matchesCoach = assessFilterCoach === 'all' || ass.coach_id === assessFilterCoach;
+    const matchesFlag = assessFilterFlag === 'all' || ass.attention_flag === assessFilterFlag;
+    let matchesDate = true;
+    if (assessFilterDate) {
+      const d1 = new Date(ass.assessment_date).toISOString().split('T')[0];
+      matchesDate = d1 === assessFilterDate;
+    }
+    return matchesCoach && matchesFlag && matchesDate;
+  });
+
+  const uniqueCoaches = Array.from(
+    new Map<string, string>(
+      assessments
+        .map(ass => [ass.coach_id, ass.staff?.name] as [string, string])
+        .filter(([id, name]) => id && name)
+    ).entries()
+  );
 
   const handleOpenAssess = () => {
     setPlayerType('outfield');
@@ -604,6 +630,160 @@ export default function PlayerProfilePage() {
                     <p className="text-white font-medium mt-1 leading-relaxed">{latestAssessment.focus_areas || 'None'}</p>
                   </div>
                 </div>
+              </div>
+            )}
+          </section>
+
+          {/* HISTORICAL ASSESSMENTS REGISTER */}
+          <section className="bg-card p-8 rounded-[2rem] border border-white/5 shadow-pitch text-white text-left space-y-6">
+            <div className="flex justify-between items-center border-b border-white/5 pb-4">
+              <h2 className="text-lg font-bold font-display italic text-white uppercase tracking-tight flex items-center gap-2">
+                <FileText className="w-5 h-5 text-gold" /> Historical Reports Ledger
+              </h2>
+              <span className="text-[10px] font-black uppercase text-white/40 font-mono">
+                {filteredAssessments.length} logged
+              </span>
+            </div>
+
+            {/* Filter Bar */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 bg-white/[0.01] border border-white/5 rounded-2xl">
+              <div>
+                <label className="text-[9px] font-black uppercase text-gold/60 tracking-wider block mb-1.5">Coach / Evaluator</label>
+                <select
+                  value={assessFilterCoach}
+                  onChange={(e) => setAssessFilterCoach(e.target.value)}
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-gold/30 appearance-none font-bold bg-forest-dark"
+                >
+                  <option value="all" className="bg-forest-dark text-white">All Coaches</option>
+                  {uniqueCoaches.map(([id, name]: any) => (
+                    <option key={id} value={id} className="bg-forest-dark text-white">{name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[9px] font-black uppercase text-gold/60 tracking-wider block mb-1.5">Attention Level</label>
+                <select
+                  value={assessFilterFlag}
+                  onChange={(e) => setAssessFilterFlag(e.target.value)}
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-gold/30 appearance-none font-bold bg-forest-dark"
+                >
+                  <option value="all" className="bg-forest-dark text-white">All Flags</option>
+                  <option value="none" className="bg-forest-dark text-white">None (On Track)</option>
+                  <option value="new_player" className="bg-forest-dark text-white">New Player</option>
+                  <option value="concern" className="bg-forest-dark text-white">Concern</option>
+                  <option value="urgent" className="bg-forest-dark text-white">Urgent</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[9px] font-black uppercase text-gold/60 tracking-wider block mb-1.5">Date Filter</label>
+                <input
+                  type="date"
+                  value={assessFilterDate}
+                  onChange={(e) => setAssessFilterDate(e.target.value)}
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-gold/30 font-bold"
+                />
+              </div>
+            </div>
+
+            {/* List */}
+            {filteredAssessments.length === 0 ? (
+              <div className="py-12 text-center opacity-40 border border-dashed border-white/10 rounded-2xl">
+                <p className="font-bold text-xs uppercase">No matched evaluations</p>
+                <p className="text-[10px] mt-0.5">Try widening filters or dates.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {filteredAssessments.map((ass: any) => {
+                  const isExpanded = expandedAssessId === ass.id;
+                  return (
+                    <div key={ass.id} className="p-5 border border-white/5 rounded-2xl bg-white/[0.01] space-y-3">
+                      <div className="flex justify-between items-start gap-4">
+                        <div>
+                          <p className="text-xs font-bold text-white">
+                            Session Evaluation on {format(new Date(ass.assessment_date), 'MMMM d, yyyy')}
+                          </p>
+                          <p className="text-[9px] text-white/40 font-semibold mt-0.5">
+                            Evaluated by Coach {ass.staff?.name || 'N/A'} • Role: {ass.player_type?.toUpperCase()}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs bg-gold/10 text-gold px-2.5 py-0.5 rounded-md border border-gold/25 font-black uppercase italic">
+                            Grade {ass.overall_grade}
+                          </span>
+                          {ass.attention_flag !== 'none' && (
+                            <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${
+                              ass.attention_flag === 'urgent'
+                                ? 'bg-red-500/10 border-red-500/25 text-red-400'
+                                : ass.attention_flag === 'concern'
+                                ? 'bg-amber-500/10 border-amber-500/25 text-amber-400'
+                                : 'bg-sky-500/10 border-sky-500/25 text-sky-400'
+                            }`}>
+                              {ass.attention_flag}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="text-xs space-y-2 leading-relaxed text-white/70">
+                        {ass.focus_areas && (
+                          <p><strong className="text-gold uppercase tracking-wider text-[9px] block">Key Focus Areas:</strong> {ass.focus_areas}</p>
+                        )}
+                        {ass.personal_note && (
+                          <p><strong className="text-gold uppercase tracking-wider text-[9px] block">General Remarks:</strong> {ass.personal_note}</p>
+                        )}
+                      </div>
+
+                      <div className="pt-2 border-t border-white/5 flex justify-between items-center">
+                        <button
+                          type="button"
+                          onClick={() => setExpandedAssessId(isExpanded ? null : ass.id)}
+                          className="text-[9px] font-black uppercase tracking-widest text-gold hover:text-white transition-colors"
+                        >
+                          {isExpanded ? 'Hide Rating Details' : 'Expand Rating Details'}
+                        </button>
+                        <span className="text-[8px] text-white/20 font-mono">ID: {ass.id}</span>
+                      </div>
+
+                      {isExpanded && (
+                        <div className="pt-4 border-t border-white/5 grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in duration-200">
+                          {/* Tech */}
+                          <div className="space-y-2">
+                            <span className="text-[9px] font-black uppercase tracking-widest text-sky-400">Technical Attributes</span>
+                            <div className="space-y-2">
+                              {Object.entries(ass.technical_ratings || {}).map(([mId, rating]: [string, any]) => {
+                                const allMetrics = [...technicalMetrics.outfield, ...technicalMetrics.goalkeeper];
+                                const label = allMetrics.find(m => m.id === mId)?.label || mId;
+                                return (
+                                  <div key={mId} className="flex justify-between text-[10px] bg-white/5 px-2.5 py-1 rounded">
+                                    <span className="text-white/60 font-medium">{label}</span>
+                                    <span className="text-gold font-bold">{rating} / 5</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          {/* Attitude */}
+                          <div className="space-y-2">
+                            <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400">Attitude & Focus</span>
+                            <div className="space-y-2">
+                              {Object.entries(ass.attitude_ratings || {}).map(([mId, rating]: [string, any]) => {
+                                const label = attitudeMetrics.find(m => m.id === mId)?.label || mId;
+                                return (
+                                  <div key={mId} className="flex justify-between text-[10px] bg-white/5 px-2.5 py-1 rounded">
+                                    <span className="text-white/60 font-medium">{label}</span>
+                                    <span className="text-gold font-bold">{rating} / 5</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </section>

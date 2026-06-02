@@ -87,6 +87,41 @@ export default function Home() {
     fetchStats();
   }, [staff, user, router, supabase, refreshTrigger]);
 
+  // Realtime channel subscriptions for live dashboard metrics (Priority 4)
+  useEffect(() => {
+    if (!staff) return;
+
+    const dashboardChannel = supabase
+      .channel('dashboard_realtime_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'bookings'
+        },
+        () => {
+          triggerRefresh();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'enrollments'
+        },
+        () => {
+          triggerRefresh();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(dashboardChannel);
+    };
+  }, [staff, supabase]);
+
   if (isLoading || !staff) {
     return (
       <div className="flex flex-col items-center justify-center flex-1 py-32 text-white">

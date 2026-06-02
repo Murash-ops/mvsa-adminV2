@@ -175,8 +175,13 @@ export default function SuperAdminDashboard({
           ======================================================== */}
       <section className="flex flex-col md:flex-row justify-between items-start md:items-center p-8 bg-gradient-to-r from-gold/10 to-transparent border border-white/5 rounded-[2rem] shadow-pitch text-white gap-6">
         <div className="space-y-1">
-          <span className="text-[10px] font-black uppercase text-gold tracking-widest flex items-center gap-1.5">
+          <span className="text-[10px] font-black uppercase text-gold tracking-widest flex items-center gap-2">
             <Shield className="w-3.5 h-3.5" /> ROOT CONTROL PANEL
+            <span className="w-px h-3 bg-white/15" />
+            <span className="flex items-center gap-1.5 text-[9px] text-emerald-400 font-bold tracking-widest animate-pulse">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)] animate-ping" />
+              LIVE UPDATES
+            </span>
           </span>
           <h2 className="text-xl font-black font-display text-white uppercase italic">Super Admin Management Deck</h2>
           <p className="text-xs text-white/50 leading-relaxed font-medium">

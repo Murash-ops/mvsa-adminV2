@@ -56,6 +56,64 @@ export default function ExpensesPage() {
   });
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
 
+  // Selection and Bulk Actions state (Priority 2)
+  const [selectedExpenseIds, setSelectedExpenseIds] = useState<number[]>([]);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const isSuperAdmin = (staff?.role as string) === 'super_admin';
+
+  const toggleSelectExpense = (id: number) => {
+    setSelectedExpenseIds(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAllExpenses = (visibleExpenses: any[]) => {
+    const visibleIds = visibleExpenses.map(e => e.id);
+    const allSelected = visibleIds.every(id => selectedExpenseIds.includes(id));
+    if (allSelected) {
+      setSelectedExpenseIds(prev => prev.filter(id => !visibleIds.includes(id)));
+    } else {
+      setSelectedExpenseIds(prev => Array.from(new Set([...prev, ...visibleIds])));
+    }
+  };
+
+  const handleBulkDeleteExpenses = async () => {
+    if (selectedExpenseIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to permanently delete the ${selectedExpenseIds.length} selected expenses?`)) return;
+
+    setIsBulkDeleting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Your session is unauthenticated or expired. Please re-login.');
+      }
+
+      const { error } = await supabase
+        .from('expenses')
+        .delete()
+        .in('id', selectedExpenseIds);
+
+      if (error) throw error;
+
+      alert(`Successfully deleted ${selectedExpenseIds.length} expenses!`);
+      setSelectedExpenseIds([]);
+      fetchExpenses();
+    } catch (err: any) {
+      alert(`Bulk delete error: ${err.message}`);
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
+  // Filtered expenses (Priority 5)
+  const filteredExpenses = expenses.filter(e => {
+    const matchesScope = scopeFilter === 'arena' ? !e.is_academy : scopeFilter === 'academy' ? e.is_academy : true;
+    const matchesSearch = searchQuery ? (e.description || '').toLowerCase().includes(searchQuery.toLowerCase()) : true;
+    return matchesScope && matchesSearch;
+  });
+
   useEffect(() => {
     if (staff) {
       fetchExpenses();
@@ -328,14 +386,15 @@ export default function ExpensesPage() {
               <input 
                 type="text" 
                 placeholder="Search description..." 
-                value={formData.description} // Wait, let's use a separate state or local input value
-                onChange={(e) => {
-                  // Let's use custom text filter
-                  const value = e.target.value;
-                  // We can search through list locally
-                }}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-12 pr-6 py-2.5 bg-white/5 border border-white/10 rounded-2xl text-sm text-white placeholder-white/40 focus:bg-white/10 focus:border-gold/30 focus:outline-none w-full sm:w-64 transition-all"
               />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition-colors">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           </div>
 
@@ -343,6 +402,16 @@ export default function ExpensesPage() {
             <table className="w-full text-left border-collapse min-w-[900px]">
               <thead>
                 <tr className="bg-white/[0.02] border-b border-white/5">
+                  {isSuperAdmin && (
+                    <th className="pl-8 py-5 w-12 text-center">
+                      <input 
+                        type="checkbox" 
+                        checked={filteredExpenses.length > 0 && filteredExpenses.every(e => selectedExpenseIds.includes(e.id))}
+                        onChange={() => toggleSelectAllExpenses(filteredExpenses)}
+                        className="w-4 h-4 bg-white/5 border border-white/10 rounded focus:ring-gold text-gold cursor-pointer"
+                      />
+                    </th>
+                  )}
                   <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Date</th>
                   <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Category</th>
                   <th className="px-8 py-5 text-[10px] uppercase font-black text-gold tracking-[0.2em]">Business Unit</th>
@@ -357,30 +426,32 @@ export default function ExpensesPage() {
                 {isLoading ? (
                   [1, 2, 3, 4, 5].map(i => (
                     <tr key={i} className="animate-pulse">
-                      <td colSpan={8} className="px-8 py-6 h-12 bg-white/5"></td>
+                      <td colSpan={isSuperAdmin ? 9 : 8} className="px-8 py-6 h-12 bg-white/5"></td>
                     </tr>
                   ))
-                ) : expenses.filter(e => {
-                  if (scopeFilter === 'arena') return !e.is_academy;
-                  if (scopeFilter === 'academy') return e.is_academy;
-                  return true;
-                }).length === 0 ? (
+                ) : filteredExpenses.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-8 py-20 text-center">
+                    <td colSpan={isSuperAdmin ? 9 : 8} className="px-8 py-20 text-center">
                       <div className="flex flex-col items-center opacity-40">
                         <Receipt className="w-12 h-12 mb-4 text-gold" />
                         <p className="font-bold text-lg text-white">No expenses logged yet</p>
-                        <p className="text-sm text-charcoal-light">Click the button above to start tracking costs.</p>
+                        <p className="text-sm text-charcoal-light">No records found matching filters.</p>
                       </div>
                     </td>
                   </tr>
                 ) : (
-                  expenses.filter(e => {
-                    if (scopeFilter === 'arena') return !e.is_academy;
-                    if (scopeFilter === 'academy') return e.is_academy;
-                    return true;
-                  }).map((expense) => (
+                  filteredExpenses.map((expense) => (
                     <tr key={expense.id} className="hover:bg-white/[0.02] transition-colors">
+                      {isSuperAdmin && (
+                        <td className="pl-8 py-6 w-12 text-center">
+                          <input 
+                            type="checkbox" 
+                            checked={selectedExpenseIds.includes(expense.id)}
+                            onChange={() => toggleSelectExpense(expense.id)}
+                            className="w-4 h-4 bg-white/5 border border-white/10 rounded focus:ring-gold text-gold cursor-pointer"
+                          />
+                        </td>
+                      )}
                       <td className="px-8 py-6 text-sm font-medium text-charcoal-light">
                         {format(new Date(expense.created_at), 'MMM d, yyyy')}
                       </td>
@@ -769,6 +840,35 @@ export default function ExpensesPage() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+      {/* Floating Bulk Action Toolbar (Priority 2) */}
+      {selectedExpenseIds.length > 0 && isSuperAdmin && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-forest-dark/90 backdrop-blur-md border border-white/10 px-6 py-4 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-[90] flex items-center gap-6 animate-slide-up">
+          <div className="flex flex-col">
+            <span className="text-xs font-black uppercase text-gold tracking-widest">{selectedExpenseIds.length} Selected</span>
+            <span className="text-[10px] text-white/40 font-bold uppercase tracking-tight">Bulk expense actions</span>
+          </div>
+
+          <div className="w-px h-8 bg-white/10" />
+
+          <button
+            onClick={handleBulkDeleteExpenses}
+            disabled={isBulkDeleting}
+            className="flex items-center gap-2 px-4 py-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all disabled:opacity-50"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Delete Selected
+          </button>
+
+          <div className="w-px h-8 bg-white/10" />
+
+          <button 
+            onClick={() => setSelectedExpenseIds([])}
+            className="text-[10px] font-black uppercase text-white/40 hover:text-white transition-colors"
+          >
+            Clear
+          </button>
         </div>
       )}
     </div>

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import { useAuth } from '@/components/AuthContext';
+import { format } from 'date-fns';
 import {
   Settings,
   MapPin,
@@ -32,7 +33,11 @@ import {
   ShieldCheck,
   Trophy,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Search,
+  Filter,
+  Calendar,
+  RefreshCw
 } from 'lucide-react';
 
 const Instagram = (props: any) => (
@@ -171,6 +176,15 @@ export default function SettingsPage() {
   const [progPosterFile, setProgPosterFile] = useState<File | null>(null);
   
   const [contentSubTab, setContentSubTab] = useState<'homepage' | 'programs'>('homepage');
+
+  // 9. Audit Logs State (super_admin only)
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [isAuditLoading, setIsAuditLoading] = useState(false);
+  const [auditSearch, setAuditSearch] = useState('');
+  const [auditFilterAction, setAuditFilterAction] = useState('all');
+  const [auditFilterStaff, setAuditFilterStaff] = useState('all');
+  const [auditFilterDate, setAuditFilterDate] = useState('all');
+  const [expandedLogId, setExpandedLogId] = useState<number | null>(null);
 
   // Role permissions checking
   const userRole = (staff?.role as string) || '';
@@ -332,8 +346,103 @@ export default function SettingsPage() {
     { id: 'notification', label: 'SMS & Alerts', icon: Bell, visible: isAdmin },
     { id: 'appearance', label: 'Appearance & Brand', icon: Palette, visible: isSuperAdmin },
     { id: 'content', label: 'Content Management', icon: Sparkles, visible: isSuperAdmin },
+    { id: 'audit', label: 'Audit Log', icon: ShieldCheck, visible: isSuperAdmin },
     { id: 'account', label: 'Account & Security', icon: User, visible: true },
   ];
+
+  // Load Audit Logs (super_admin only)
+  const loadAuditLogs = async () => {
+    if (!isSuperAdmin) return;
+    setIsAuditLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('audit_log')
+        .select(`
+          id,
+          action,
+          entity_table,
+          entity_id,
+          performed_by,
+          details,
+          created_at,
+          staff:performed_by (
+            name
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setAuditLogs(data || []);
+    } catch (err: any) {
+      console.error('Error loading audit logs:', err.message);
+    } finally {
+      setIsAuditLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'audit' && isSuperAdmin) {
+      loadAuditLogs();
+    }
+  }, [activeTab, isSuperAdmin]);
+
+  // Audit log client-side filters
+  const filteredAuditLogs = auditLogs.filter(log => {
+    const matchesSearch = auditSearch.trim() === '' || 
+      log.action?.toLowerCase().includes(auditSearch.toLowerCase()) ||
+      log.entity_table?.toLowerCase().includes(auditSearch.toLowerCase()) ||
+      log.entity_id?.toLowerCase().includes(auditSearch.toLowerCase()) ||
+      log.staff?.name?.toLowerCase().includes(auditSearch.toLowerCase()) ||
+      JSON.stringify(log.details || {}).toLowerCase().includes(auditSearch.toLowerCase());
+
+    const matchesAction = auditFilterAction === 'all' || log.action === auditFilterAction;
+
+    const matchesStaff = auditFilterStaff === 'all' || log.performed_by === auditFilterStaff;
+
+    let matchesDate = true;
+    if (auditFilterDate !== 'all') {
+      const logDate = new Date(log.created_at);
+      const now = new Date();
+      const diffMs = now.getTime() - logDate.getTime();
+      const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+      if (auditFilterDate === 'today') {
+        matchesDate = diffDays <= 1;
+      } else if (auditFilterDate === 'week') {
+        matchesDate = diffDays <= 7;
+      } else if (auditFilterDate === 'month') {
+        matchesDate = diffDays <= 30;
+      }
+    }
+
+    return matchesSearch && matchesAction && matchesStaff && matchesDate;
+  });
+
+  const uniqueActions = Array.from(new Set(auditLogs.map(log => log.action))).filter(Boolean);
+  
+  const uniqueStaff = Array.from(
+    new Map<string, string>(
+      auditLogs
+        .map(log => [log.performed_by, log.staff?.name] as [string, string])
+        .filter(([id, name]) => id && name)
+    ).entries()
+  );
+
+  const getActionBadgeStyle = (action: string) => {
+    if (action.includes('confirm') || action.includes('approve') || action.includes('paid')) {
+      return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/10';
+    }
+    if (action.includes('cancel') || action.includes('delete')) {
+      return 'bg-rose-500/10 text-rose-400 border-rose-500/10';
+    }
+    if (action.includes('create') || action.includes('add')) {
+      return 'bg-sky-500/10 text-sky-400 border-sky-500/10';
+    }
+    if (action.includes('edit') || action.includes('change') || action.includes('update')) {
+      return 'bg-amber-500/10 text-amber-400 border-amber-500/10';
+    }
+    return 'bg-white/5 text-white/50 border-white/5';
+  };
 
   // 1. Save Facility Profile Settings
   const handleSaveFacility = async (e: React.FormEvent) => {
@@ -1527,6 +1636,167 @@ export default function SettingsPage() {
                     </button>
                   </div>
                 </form>
+              )}
+
+              {/* --- SECTION 8: SYSTEM AUDIT LOGS (super_admin only) --- */}
+              {activeTab === 'audit' && isSuperAdmin && (
+                <div className="space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <h2 className="font-display font-black text-2xl text-white uppercase italic tracking-tight">System Audit Log</h2>
+                      <p className="text-white/40 text-xs mt-0.5">Real-time ledger tracking administrative mutations, security actions, and database writes.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={loadAuditLogs}
+                      disabled={isAuditLoading}
+                      className="px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-xs font-black uppercase text-gold hover:text-white hover:bg-white/10 transition-all flex items-center gap-1.5 self-start"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isAuditLoading ? 'animate-spin' : ''}`} />
+                      Refresh Logs
+                    </button>
+                  </div>
+
+                  {/* Filter Bar */}
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 p-4 bg-white/[0.02] border border-white/5 rounded-2xl">
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
+                      <input
+                        type="text"
+                        placeholder="Search logs..."
+                        value={auditSearch}
+                        onChange={(e) => setAuditSearch(e.target.value)}
+                        className="w-full pl-9 pr-4 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white placeholder-white/40 focus:outline-none focus:border-gold/30"
+                      />
+                    </div>
+
+                    <div className="relative">
+                      <select
+                        value={auditFilterAction}
+                        onChange={(e) => setAuditFilterAction(e.target.value)}
+                        className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-gold/30 appearance-none font-bold"
+                      >
+                        <option value="all" className="bg-charcoal text-white">All Actions</option>
+                        {uniqueActions.map((act: any) => (
+                          <option key={act} value={act} className="bg-charcoal text-white">
+                            {act.replace(/_/g, ' ').toUpperCase()}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="relative">
+                      <select
+                        value={auditFilterStaff}
+                        onChange={(e) => setAuditFilterStaff(e.target.value)}
+                        className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-gold/30 appearance-none font-bold"
+                      >
+                        <option value="all" className="bg-charcoal text-white">All Operators</option>
+                        {uniqueStaff.map(([id, name]: any) => (
+                          <option key={id} value={id} className="bg-charcoal text-white">
+                            {name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="relative">
+                      <select
+                        value={auditFilterDate}
+                        onChange={(e) => setAuditFilterDate(e.target.value)}
+                        className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-gold/30 appearance-none font-bold"
+                      >
+                        <option value="all" className="bg-charcoal text-white">Any Timeframe</option>
+                        <option value="today" className="bg-charcoal text-white">Past 24 Hours</option>
+                        <option value="week" className="bg-charcoal text-white">Past 7 Days</option>
+                        <option value="month" className="bg-charcoal text-white">Past 30 Days</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Audit Logs Table */}
+                  {isAuditLoading ? (
+                    <div className="py-24 text-center">
+                      <Loader2 className="w-8 h-8 text-gold animate-spin mx-auto mb-2" />
+                      <p className="text-white/40 text-xs font-bold uppercase tracking-wider">Syncing Audit Ledger...</p>
+                    </div>
+                  ) : filteredAuditLogs.length === 0 ? (
+                    <div className="py-20 text-center border border-white/5 rounded-2xl bg-white/[0.01]">
+                      <ShieldCheck className="w-10 h-10 text-gold/40 mx-auto mb-2" />
+                      <p className="text-xs font-bold text-white uppercase tracking-wider">No Mutations Recorded</p>
+                      <p className="text-[10px] text-white/40 mt-1">No activities matched the active filter criteria.</p>
+                    </div>
+                  ) : (
+                    <div className="border border-white/5 rounded-2xl overflow-hidden bg-charcoal/20">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="border-b border-white/5 bg-white/[0.02] text-[10px] font-black uppercase text-gold tracking-wider">
+                              <th className="py-3 px-4">Timestamp</th>
+                              <th className="py-3 px-4">Action Event</th>
+                              <th className="py-3 px-4">Operator</th>
+                              <th className="py-3 px-4">Entity Type</th>
+                              <th className="py-3 px-4">Record ID</th>
+                              <th className="py-3 px-4 text-right">Details</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-white/5 text-xs text-white/80">
+                            {filteredAuditLogs.map((log: any) => {
+                              const isExpanded = expandedLogId === log.id;
+                              return (
+                                <optgroup key={log.id} label="log-group" className="contents">
+                                  <tr className="hover:bg-white/[0.01] transition-colors border-b border-white/5">
+                                    <td className="py-3.5 px-4 font-medium text-white/50">
+                                      {format(new Date(log.created_at), 'MMM d, h:mm a')}
+                                    </td>
+                                    <td className="py-3.5 px-4">
+                                      <span className={`inline-flex px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border ${getActionBadgeStyle(log.action)}`}>
+                                        {log.action.replace(/_/g, ' ')}
+                                      </span>
+                                    </td>
+                                    <td className="py-3.5 px-4 font-bold text-white">
+                                      {log.staff?.name || 'Automated / System'}
+                                    </td>
+                                    <td className="py-3.5 px-4 font-mono text-[10px] text-white/60">
+                                      {log.entity_table}
+                                    </td>
+                                    <td className="py-3.5 px-4 font-mono text-[10px] text-white/40">
+                                      {log.entity_id}
+                                    </td>
+                                    <td className="py-3.5 px-4 text-right">
+                                      <button
+                                        type="button"
+                                        onClick={() => setExpandedLogId(isExpanded ? null : log.id)}
+                                        className="text-[10px] font-black uppercase tracking-wider text-gold hover:text-white transition-colors"
+                                      >
+                                        {isExpanded ? 'Hide Payload' : 'View Payload'}
+                                      </button>
+                                    </td>
+                                  </tr>
+                                  {isExpanded && (
+                                    <tr>
+                                      <td colSpan={6} className="py-4 px-6 bg-white/[0.01] border-t border-b border-white/5">
+                                        <div className="space-y-3">
+                                          <div className="flex justify-between items-center">
+                                            <span className="text-[9px] font-black uppercase text-gold tracking-widest">JSON Payload Diff</span>
+                                            <span className="text-[9px] text-white/30 font-mono">ID: {log.id}</span>
+                                          </div>
+                                          <pre className="text-[10px] font-mono text-white/70 bg-black/40 p-4 rounded-xl overflow-x-auto max-h-60 leading-normal scrollbar-hide border border-white/5">
+                                            {JSON.stringify(log.details, null, 2)}
+                                          </pre>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </optgroup>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
 
             </div>

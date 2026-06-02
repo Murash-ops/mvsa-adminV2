@@ -61,7 +61,14 @@ export default function AcademyOperations() {
   
   // Roster Filter & Search
   const [rosterStatusFilter, setRosterStatusFilter] = useState<string>('active');
+  const [rosterPaymentStatusFilter, setRosterPaymentStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Bulk Action states (Priority 2)
+  const [selectedEnrollmentIds, setSelectedEnrollmentIds] = useState<number[]>([]);
+  const [isBulkSmsOpen, setIsBulkSmsOpen] = useState(false);
+  const [bulkSmsText, setBulkSmsText] = useState('');
+  const [isBulkSubmitting, setIsBulkSubmitting] = useState(false);
 
   // Interactive Payment UI State
   const [isPaymentOpen, setIsPaymentOpen] = useState(false);
@@ -231,6 +238,112 @@ export default function AcademyOperations() {
     fetchInitialData();
   }, []);
 
+  // Load search from URL params on mount/load (Priority 5)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const searchParam = params.get('search');
+      if (searchParam) {
+        setSearchQuery(searchParam);
+      }
+    }
+  }, [enrollments.length]);
+
+  const toggleSelectEnrollment = (id: number) => {
+    setSelectedEnrollmentIds(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAllEnrollments = (visibleEnrollments: any[]) => {
+    const visibleIds = visibleEnrollments.map(e => e.id);
+    const allSelected = visibleIds.every(id => selectedEnrollmentIds.includes(id));
+    if (allSelected) {
+      setSelectedEnrollmentIds(prev => prev.filter(id => !visibleIds.includes(id)));
+    } else {
+      setSelectedEnrollmentIds(prev => Array.from(new Set([...prev, ...visibleIds])));
+    }
+  };
+
+  const handleBulkConfirmEnrollment = async () => {
+    if (selectedEnrollmentIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to approve enrollment for ${selectedEnrollmentIds.length} selected students?`)) return;
+
+    setIsBulkSubmitting(true);
+    try {
+      const { error } = await supabase
+        .from('enrollments')
+        .update({ status: 'active' })
+        .in('id', selectedEnrollmentIds);
+
+      if (error) throw error;
+
+      alert(`Approved ${selectedEnrollmentIds.length} enrollments successfully!`);
+      setSelectedEnrollmentIds([]);
+      await refreshData();
+    } catch (err: any) {
+      alert(`Bulk approval error: ${err.message}`);
+    } finally {
+      setIsBulkSubmitting(false);
+    }
+  };
+
+  const handleBulkMarkPaid = async () => {
+    if (selectedEnrollmentIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to mark ${selectedEnrollmentIds.length} selected enrollments as fully paid?`)) return;
+
+    setIsBulkSubmitting(true);
+    try {
+      const { error } = await supabase
+        .from('enrollments')
+        .update({ payment_status: 'fully_paid', status: 'active' })
+        .in('id', selectedEnrollmentIds);
+
+      if (error) throw error;
+
+      alert(`Marked ${selectedEnrollmentIds.length} enrollments as fully paid!`);
+      setSelectedEnrollmentIds([]);
+      await refreshData();
+    } catch (err: any) {
+      alert(`Bulk payment update error: ${err.message}`);
+    } finally {
+      setIsBulkSubmitting(false);
+    }
+  };
+
+  const handleBulkSendEnrollmentSms = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (selectedEnrollmentIds.length === 0 || !bulkSmsText.trim()) return;
+
+    setIsBulkSubmitting(true);
+    try {
+      const selected = enrollments.filter(e => selectedEnrollmentIds.includes(e.id));
+      
+      const smsToInsert = selected.map(e => ({
+        recipient_phone: e.client_phone,
+        message: bulkSmsText,
+        type: 'client_confirmation',
+        status: 'pending',
+        sent_by: staff?.id
+      }));
+
+      const { error } = await supabase
+        .from('notifications')
+        .insert(smsToInsert);
+
+      if (error) throw error;
+
+      alert(`Queued bulk SMS notifications for ${selected.length} parents.`);
+      setIsBulkSmsOpen(false);
+      setBulkSmsText('');
+      setSelectedEnrollmentIds([]);
+    } catch (err: any) {
+      alert(`Bulk SMS dispatch error: ${err.message}`);
+    } finally {
+      setIsBulkSubmitting(false);
+    }
+  };
+
   async function fetchInitialData() {
     setIsLoading(true);
     try {
@@ -298,10 +411,11 @@ export default function AcademyOperations() {
   const filteredEnrollments = enrollments.filter(e => {
     const matchesProgram = selectedProgramId === 'all' || e.program_id.toString() === selectedProgramId;
     const matchesStatus = rosterStatusFilter === 'all' || e.status === rosterStatusFilter;
+    const matchesPaymentStatus = rosterPaymentStatusFilter === 'all' || e.payment_status === rosterPaymentStatusFilter;
     const matchesSearch = e.participant_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           (e.parent_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
                           e.client_phone.includes(searchQuery);
-    return matchesProgram && matchesStatus && matchesSearch;
+    return matchesProgram && matchesStatus && matchesPaymentStatus && matchesSearch;
   });
 
   // Calculate pricing for an enrollment based on plan
@@ -995,6 +1109,20 @@ export default function AcademyOperations() {
               <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gold text-xs">▼</div>
             </div>
 
+            {/* Roster payment status filter */}
+            <div className="relative">
+              <select
+                value={rosterPaymentStatusFilter}
+                onChange={(e) => setRosterPaymentStatusFilter(e.target.value)}
+                className="px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white font-bold border border-white/10 focus:border-gold/30 transition-all text-xs appearance-none pr-10 focus:outline-none uppercase tracking-wider"
+              >
+                <option value="all" className="bg-forest-dark text-white">All Payments</option>
+                <option value="fully_paid" className="bg-forest-dark text-white">Fully Paid</option>
+                <option value="unpaid" className="bg-forest-dark text-white">Unpaid</option>
+              </select>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gold text-xs">▼</div>
+            </div>
+
             {/* Search bar */}
             <div className="relative w-full md:w-64">
               <input
@@ -1012,6 +1140,19 @@ export default function AcademyOperations() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-white/5 bg-white/[0.005]">
+                {(staff?.role === 'academy_coo' || staff?.role === 'super_admin') && (
+                  <th className="p-6 w-12 text-center">
+                    <input 
+                      type="checkbox" 
+                      checked={filteredEnrollments.length > 0 && filteredEnrollments.every(e => selectedEnrollmentIds.includes(e.id))}
+                      onChange={(evt) => {
+                        evt.stopPropagation();
+                        toggleSelectAllEnrollments(filteredEnrollments);
+                      }}
+                      className="w-4 h-4 bg-white/5 border border-white/10 rounded focus:ring-gold text-gold cursor-pointer"
+                    />
+                  </th>
+                )}
                 <th className="p-6 text-[10px] font-black uppercase tracking-widest text-white/40">Athlete</th>
                 <th className="p-6 text-[10px] font-black uppercase tracking-widest text-white/40">Age / Gender</th>
                 <th className="p-6 text-[10px] font-black uppercase tracking-widest text-white/40">Parent Details</th>
@@ -1023,7 +1164,7 @@ export default function AcademyOperations() {
             <tbody className="divide-y divide-white/5">
               {filteredEnrollments.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-12 text-center">
+                  <td colSpan={(staff?.role === 'academy_coo' || staff?.role === 'super_admin') ? 7 : 6} className="p-12 text-center">
                     <div className="flex flex-col items-center justify-center gap-2 opacity-30">
                       <Users className="w-10 h-10 text-gold" />
                       <p className="font-bold text-sm text-white uppercase">No enrollments match parameters</p>
@@ -1041,6 +1182,16 @@ export default function AcademyOperations() {
                       onClick={() => handleOpenProfile(e)}
                       className="hover:bg-white/[0.015] transition-colors cursor-pointer"
                     >
+                      {(staff?.role === 'academy_coo' || staff?.role === 'super_admin') && (
+                        <td className="p-6 w-12 text-center" onClick={(evt) => evt.stopPropagation()}>
+                          <input 
+                            type="checkbox" 
+                            checked={selectedEnrollmentIds.includes(e.id)}
+                            onChange={() => toggleSelectEnrollment(e.id)}
+                            className="w-4 h-4 bg-white/5 border border-white/10 rounded focus:ring-gold text-gold cursor-pointer"
+                          />
+                        </td>
+                      )}
                       <td className="p-6">
                         <div className="flex items-center gap-3">
                           {e.passport_photo_url ? (
@@ -2158,6 +2309,126 @@ export default function AcademyOperations() {
           </div>
         </div>
       )}
+      {/* Floating Roster Bulk Action Toolbar (Priority 2) */}
+      {selectedEnrollmentIds.length > 0 && (staff?.role === 'academy_coo' || staff?.role === 'super_admin') && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-forest-dark/90 backdrop-blur-md border border-white/10 px-6 py-4 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-[90] flex items-center gap-6 animate-slide-up">
+          <div className="flex flex-col">
+            <span className="text-xs font-black uppercase text-gold tracking-widest">{selectedEnrollmentIds.length} Selected</span>
+            <span className="text-[10px] text-white/40 font-bold uppercase tracking-tight">Bulk student roster actions</span>
+          </div>
+
+          <div className="w-px h-8 bg-white/10" />
+
+          <div className="flex gap-2">
+            <button
+              onClick={handleBulkConfirmEnrollment}
+              disabled={isBulkSubmitting}
+              className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all disabled:opacity-50"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              Approve Active
+            </button>
+            <button
+              onClick={handleBulkMarkPaid}
+              disabled={isBulkSubmitting}
+              className="flex items-center gap-2 px-4 py-2.5 bg-gold/10 hover:bg-gold/20 text-gold border border-gold/20 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all disabled:opacity-50"
+            >
+              <DollarSign className="w-3.5 h-3.5" />
+              Mark Paid
+            </button>
+            <button
+              onClick={() => setIsBulkSmsOpen(true)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              Send SMS
+            </button>
+          </div>
+
+          <div className="w-px h-8 bg-white/10" />
+
+          <button 
+            onClick={() => setSelectedEnrollmentIds([])}
+            className="text-[10px] font-black uppercase text-white/40 hover:text-white transition-colors"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
+      {/* --- MODAL: BULK SMS COMPOSER FOR ENROLLMENTS (Priority 2) --- */}
+      {isBulkSmsOpen && selectedEnrollmentIds.length > 0 && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setIsBulkSmsOpen(false)} />
+          <div className="relative bg-charcoal border border-white/10 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
+              <div>
+                <h2 className="text-xl font-display font-black tracking-tight text-white uppercase flex items-center gap-2">
+                  <MessageSquare className="w-5 h-5 text-purple-400" /> Compose Bulk SMS
+                </h2>
+                <p className="text-white/40 text-xs mt-0.5">Sending alert notifications to {selectedEnrollmentIds.length} parents</p>
+              </div>
+              <button onClick={() => setIsBulkSmsOpen(false)} className="p-2 hover:bg-white/5 rounded-full transition-colors text-white/40 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleBulkSendEnrollmentSms} className="p-6 space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold text-gold uppercase tracking-wider mb-1.5">SMS Body Message</label>
+                <textarea 
+                  required
+                  rows={4}
+                  value={bulkSmsText}
+                  onChange={(e) => setBulkSmsText(e.target.value)}
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-xs text-white placeholder-white/30 focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold transition-all resize-none"
+                  placeholder="Dear Parent, your child's training schedule at MVSA Academy has been updated. Please check details. Thank you!"
+                />
+                <span className="text-[10px] text-white/30 block mt-1">Characters: {bulkSmsText.length} | SMS count estimation: {Math.ceil(bulkSmsText.length / 160)}</span>
+              </div>
+
+              {/* Templates */}
+              <div className="space-y-2">
+                <span className="text-[9px] font-bold text-gold uppercase tracking-widest block">Quick Templates</span>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { label: 'Enrollment Approved', text: 'Dear Parent, your child\'s enrollment request at MVSA Academy has been approved successfully! Welcome to the squad.' },
+                    { label: 'Fee Outstanding', text: 'Dear Parent, please note that registration fees are due for your child\'s training at MVSA. Please log payment.' },
+                    { label: 'Schedule Postponed', text: 'Dear Parent, today\'s training session at MVSA Academy has been postponed due to heavy weather. Check updates.' }
+                  ].map((tpl, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setBulkSmsText(tpl.text)}
+                      className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 rounded-lg text-[10px] font-bold text-white/60 hover:text-white transition-all"
+                    >
+                      {tpl.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                <button 
+                  type="button" 
+                  onClick={() => setIsBulkSmsOpen(false)}
+                  className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  disabled={isBulkSubmitting || !bulkSmsText.trim()}
+                  className="flex-1 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-lg shadow-purple-600/20 transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {isBulkSubmitting ? 'Sending...' : 'Dispatch SMS'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
