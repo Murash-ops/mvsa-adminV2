@@ -1,36 +1,82 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# MVSA Admin Console
 
-## Getting Started
+Staff management panel for Mountain View Sports Arena.
 
-First, run the development server:
+> **Live URL**: [admin.mvsa.co.ke](https://admin.mvsa.co.ke)  
+> **Supabase project**: `ojblrfrfzzslsbwvvaei`
+
+---
+
+## Overview
+
+Next.js 14 (App Router) application serving role-based dashboards and management tools for MVSA staff. Supports five staff roles: `super_admin`, `boss`, `academy_coo`, `receptionist`, and `coach`.
+
+See [ADMIN_SITE.md](../ADMIN_SITE.md) for the full page and feature inventory.  
+See [ROLES.md](../ROLES.md) for the role permission matrix.
+
+---
+
+## Local Development
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev     # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Required `.env.local`
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```
+NEXT_PUBLIC_SUPABASE_URL=https://ojblrfrfzzslsbwvvaei.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key>
+SUPABASE_SERVICE_ROLE_KEY=<service role key>
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+> `SUPABASE_SERVICE_ROLE_KEY` is used only by the `/api/staff/create` route. Never expose it in the browser.
 
-## Learn More
+---
 
-To learn more about Next.js, take a look at the following resources:
+## Key Directories
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+src/
+├── app/
+│   ├── (authenticated)/     # All role-gated pages
+│   │   ├── page.tsx         # Dashboard router (role-based)
+│   │   ├── bookings/
+│   │   ├── walkins/
+│   │   ├── venues/
+│   │   ├── academy-operations/
+│   │   │   ├── attendance/
+│   │   │   └── assessments/
+│   │   ├── programs/
+│   │   ├── players/[id]/
+│   │   ├── instructor/
+│   │   ├── expenses/
+│   │   ├── reports/
+│   │   ├── notifications/
+│   │   ├── inquiries/
+│   │   ├── staff/
+│   │   └── settings/
+│   ├── api/
+│   │   └── staff/create/    # Service-role staff creation endpoint
+│   └── login/
+├── components/
+│   ├── AuthContext.tsx       # Supabase session + staff profile state
+│   ├── AuthGuard.tsx         # Client-side route permission enforcement
+│   ├── Sidebar.tsx           # Role-filtered navigation
+│   ├── Header.tsx            # Bell alerts, global search
+│   ├── QuickLogModal.tsx     # Walk-in booking entry
+│   └── dashboards/          # Per-role dashboard components
+└── utils/
+    └── supabase/             # Browser + server Supabase client helpers
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## Build
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm run build    # TypeScript strict compilation
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Zero TypeScript errors expected on `main`.
